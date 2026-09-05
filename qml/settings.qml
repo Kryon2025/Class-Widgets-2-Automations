@@ -18,6 +18,11 @@ PluginPage {
     pluginId: "com.kryon.automations"
     title: "自动化"
 
+    extraHeaderItems: Button {
+        text: "窗口调试"
+        onClicked: if (backend) backend.openWindowDebugger()
+    }
+
     // ── 类型清单（顺序 = 后端常量表）────────────────────────
     property var trigTypes: ["time", "interval", "class_start", "class_end", "break_start",
         "after_school", "status_change", "before_class", "app_start", "signal"]

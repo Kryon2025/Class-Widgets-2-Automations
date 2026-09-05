@@ -5,6 +5,7 @@
   "api_version": ">=0.6.0",
   "entry": "main.py",
   "author": "松峰",
-  "description": "自动化引擎：触发器（定时/间隔/上课/下课/课间/放学/状态变化/上课前/启动/信号）+ 规则集（科目/教师/时间/状态/窗口/标志等条件）+ 行动（运行命令/显示提醒/等待/广播信号/设标志/设置配置项/锁定/重启），支持自动恢复。",
+  "description": "自动化引擎",
+  "url":"https://github.com/Kryon2025/Class-Widgets-2-Automations",
   "readme": "README.md"
 }

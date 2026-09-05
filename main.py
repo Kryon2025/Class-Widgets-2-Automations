@@ -53,6 +53,7 @@ class Plugin(CW2Plugin):
         super().__init__(api)
         self._engine: RuleEngine | None = None
         self._task: RuleEngineTask | None = None
+        self._debugger = None
 
     def on_load(self):
         super().on_load()
@@ -103,6 +104,13 @@ class Plugin(CW2Plugin):
             except Exception as e:
                 logger.warning("[automations] 引擎停止异常: {}", e)
             self._engine = None
+        if self._debugger is not None:
+            try:
+                self._debugger.close()
+                self._debugger.deleteLater()
+            except Exception:
+                pass
+            self._debugger = None
         logger.info("[automations] 插件已卸载")
 
     # ── 设置页槽 ─────────────────────────────────────────────
@@ -186,3 +194,16 @@ class Plugin(CW2Plugin):
         except Exception as e:
             logger.warning("[automations] 读取主题失败: {}", e)
             return "[]"
+
+    @Slot()
+    def openWindowDebugger(self) -> None:
+        """打开窗口规则调试工具（置顶小窗，显示前台窗口信息）。"""
+        try:
+            if self._debugger is None:
+                from window_debugger import WindowDebugger
+                self._debugger = WindowDebugger()
+            self._debugger.show()
+            self._debugger.raise_()
+            self._debugger.activateWindow()
+        except Exception as e:
+            logger.warning("[automations] 打开窗口调试工具失败: {}", e)
