@@ -1,11 +1,11 @@
 {
   "id": "com.kryon.automations",
-  "name": "Kryon 自动化",
-  "version": "1.0.0",
+  "name": "Kryon的自动化（类ClassIsland自动化）",
+  "version": "1.0.1",
   "api_version": ">=0.6.0",
   "entry": "main.py",
   "author": "松峰",
-  "description": "自动化引擎",
+  "description": "为ClassWidgets2提供类似ClassIsland的自动化功能",
   "url":"https://github.com/Kryon2025/Class-Widgets-2-Automations",
   "readme": "README.md"
 }
