@@ -153,12 +153,6 @@ PluginPage {
         try { return JSON.parse(JSON.stringify(r)) } catch (e) { return r }
     }
 
-    // 插件页在窗口里的左上角（编辑面板按这个定位，正好盖住原来的区域）
-    function pageTopLeft() {
-        var ov = Overlay.overlay
-        if (!ov) return Qt.point(0, 0)
-        return page.mapToItem(ov, 0, 0)
-    }
 
     function reload() {
         if (!backend) return
@@ -1147,8 +1141,9 @@ PluginPage {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        // 推迟到本次点击派发结束再执行：否则会一边派发一边重建列表 item
-                        onClicked: Qt.callLater(function () { page.openEditor(index) })
+                        // 推迟到本次点击派发结束再执行：否则会一边派发一边重建列表 item。
+                        // 直接传下标，不闭包捕获委托作用域。
+                        onClicked: Qt.callLater(page.openEditor, index)
                     }
 
                     ColumnLayout {
@@ -1231,19 +1226,19 @@ PluginPage {
     // ══════════════ 编辑页：从下方向上拉出，盖住插件页原来的区域 ══════════════
     Popup {
         id: editorDialog
-        parent: Overlay.overlay
         modal: true
         padding: 0
         closePolicy: Popup.CloseOnEscape
         onClosed: page.closeEditor(false)
 
-        // 尺寸与位置跟着插件页走：正好覆盖原来的区域
-        readonly property var geomRef: page.width + page.height
-            + (Overlay.overlay ? Overlay.overlay.width + Overlay.overlay.height : 0)
-        x: { geomRef; return page.pageTopLeft().x }
-        y: { geomRef; return page.pageTopLeft().y }
-        width: page.width
-        height: page.height
+        // 注意：这里刻意不写 parent、也不用 mapToItem 做几何映射——
+        // 那两条路径会在页面构造期进入 QML 引擎的几何/重父级流程，实测会导致主程序崩溃。
+        // 现在只用 Overlay.overlay 的宽高（RinUI 自家 Dialog 同款做法），铺满设置窗口后
+        // 由里面的面板做「从下方拉出」。
+        x: 0
+        y: 0
+        width: Overlay.overlay ? Overlay.overlay.width : 800
+        height: Overlay.overlay ? Overlay.overlay.height : 600
 
         background: Rectangle { color: "transparent" }
 
