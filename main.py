@@ -187,9 +187,35 @@ class Plugin(CW2Plugin):
         """主题列表 [[id, name], ...]（供"设置主题"下拉）。"""
         try:
             tm = getattr(self.api._app, "themeManager", None) or getattr(self.api._app, "theme_manager", None)
-            themes = tm.themes() if tm else []
-            out = [[str(t.get("id") or ""), str(t.get("name") or t.get("id") or "")]
-                   for t in themes]
+            themes = []
+            if tm is not None:
+                # 不同版本里 themes 可能是 list 属性，也可能是方法
+                for name in ("themes", "theme_list", "themes_list", "list"):
+                    val = getattr(tm, name, None)
+                    if val is None:
+                        continue
+                    themes = val() if callable(val) else val
+                    if themes:
+                        break
+                if not themes:
+                    for name in ("get_themes", "getThemes", "all_themes"):
+                        fn = getattr(tm, name, None)
+                        if callable(fn):
+                            themes = fn() or []
+                            if themes:
+                                break
+
+            def field(t, key, default=""):
+                if isinstance(t, dict):
+                    return t.get(key, default)
+                return getattr(t, key, default)
+
+            out = []
+            for t in themes or []:
+                tid = field(t, "id") or field(t, "name") or ""
+                name = field(t, "name") or tid
+                if tid:
+                    out.append([str(tid), str(name)])
             return json.dumps(out, ensure_ascii=False)
         except Exception as e:
             logger.warning("[automations] 读取主题失败: {}", e)

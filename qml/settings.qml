@@ -127,7 +127,11 @@ PluginPage {
         if (t && t.appearance && t.appearance.windowRadius) return t.appearance.windowRadius * 2
         return 14
     }
-    readonly property int cardHeight: 156
+    // 卡片宽度按页面内容宽度算，不依赖 Flow 自身宽度（避免布局循环）
+    readonly property real gridWidth: Math.min(page.width - (page.horizontalPadding || 56) * 2,
+                                               page.wrapperWidth || 1000)
+    readonly property real cardWidth: Math.max(240, Math.min(360, (gridWidth - 14) / 2))
+    readonly property int cardHeight: 128
 
     // ── 编辑草稿（点卡片打开上浮编辑页，取消即丢弃）─────────
     property bool editing: false
@@ -215,7 +219,9 @@ PluginPage {
 
     function applyDraft() {
         if (page.draftIndex < 0 || page.draftIndex >= page.rules.length) return false
-        page.rules[page.draftIndex] = page.draft
+        var list = page.rules.slice()
+        list[page.draftIndex] = page.draft
+        page.rules = list
         return page.save()
     }
 
@@ -226,7 +232,9 @@ PluginPage {
         if (saveIt) {
             ok = page.applyDraft()        // 保存失败就留在编辑页，别悄悄丢掉改动
         } else if (page.draftIsNew && page.draftIndex >= 0 && page.draftIndex < page.rules.length) {
-            page.rules.splice(page.draftIndex, 1)   // 新建后取消 → 不留空壳
+            var keep = page.rules.slice()            // 新建后取消 → 不留空壳
+            keep.splice(page.draftIndex, 1)
+            page.rules = keep
             page.save()
         }
         if (ok) {
@@ -257,7 +265,11 @@ PluginPage {
 
     function doDelete() {
         var i = page.draftIndex
-        if (i >= 0 && i < page.rules.length) page.rules.splice(i, 1)
+        if (i >= 0 && i < page.rules.length) {
+            var keep = page.rules.slice()
+            keep.splice(i, 1)
+            page.rules = keep
+        }
         page.editing = false
         page.draft = null
         page.draftIsNew = false
@@ -269,17 +281,22 @@ PluginPage {
     }
 
     function addRule() {
-        page.rules.push({
+        var fresh = {
             "uid": "", "name": "新自动化", "description": "", "enabled": true, "revert": false,
             "triggers": [{"type": "class_start", "p1": "", "p2": "", "p3": "", "p4": ""}],
             "ruleset": {"enabled": false, "mode": "all", "reversed": false, "rules": []},
             "actions": [{"type": "set_config", "p1": "interactions.hide.state", "p2": "true", "p3": "", "p4": ""}]
-        })
-        var i = page.rules.length - 1
+        }
+        // 注意：一律重新赋值一个新数组，不用原地 push/splice。
+        // 原地改不会触发属性变更通知，而且会让 Repeater 在事件派发中途重建 item。
+        var list = page.rules.slice()
+        list.push(fresh)
+        page.rules = list
+        var i = list.length - 1
         page.current = i
         page.draftIndex = i
         page.draftIsNew = true
-        page.draft = page.cloneRule(page.rules[i])
+        page.draft = page.cloneRule(fresh)
         page.editing = true
         statusText = ""
         page.loadRule()
@@ -1089,7 +1106,7 @@ PluginPage {
             description: "触发器触发 → 规则集过滤 → 依次执行行动；开启「恢复」后，逆事件（如下课）或规则集不再满足时会自动还原被修改的配置。点任意卡片从下方拉出编辑页，或点「＋」新建。"
             RowLayout {
                 spacing: 8
-                Button { text: "刷新"; onClicked: page.reload() }
+                Button { text: "刷新"; onClicked: Qt.callLater(page.reload) }
             }
         }
 
@@ -1121,7 +1138,7 @@ PluginPage {
                 delegate: Frame {
                     id: ruleCard
                     property var ruleObj: page.rules[index]
-                    width: Math.max(320, Math.min(540, (cardFlow.width - cardFlow.spacing) / 2))
+                    width: page.cardWidth
                     height: page.cardHeight
                     radius: page.cardRadius
                     hoverable: true
@@ -1130,7 +1147,8 @@ PluginPage {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: page.openEditor(index)
+                        // 推迟到本次点击派发结束再执行：否则会一边派发一边重建列表 item
+                        onClicked: Qt.callLater(function () { page.openEditor(index) })
                     }
 
                     ColumnLayout {
@@ -1175,7 +1193,7 @@ PluginPage {
             // 新建卡片：和规则卡片一样大，放在最后
             Frame {
                 id: newCard
-                width: Math.max(320, Math.min(540, (cardFlow.width - cardFlow.spacing) / 2))
+                width: page.cardWidth
                 height: page.cardHeight
                 radius: page.cardRadius
                 hoverable: true
@@ -1188,7 +1206,7 @@ PluginPage {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: page.addRule()
+                    onClicked: Qt.callLater(page.addRule)
                 }
 
                 ColumnLayout {
