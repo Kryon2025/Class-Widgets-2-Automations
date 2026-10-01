@@ -121,24 +121,11 @@ PluginPage {
     property var appLabels: []
     property bool appsLoaded: false
 
-    // ── 卡片外观（圆角取主题窗口圆角的两倍；主题默认只有 3，太方了）──
-    readonly property int cardRadius: {
-        var t = Theme.currentTheme
-        if (t && t.appearance && t.appearance.windowRadius) return t.appearance.windowRadius * 2
-        return 14
-    }
-    // 卡片宽度按页面内容宽度算，不依赖 Flow 自身宽度（避免布局循环）
-    readonly property real gridWidth: Math.min(page.width - (page.horizontalPadding || 56) * 2,
-                                               page.wrapperWidth || 1000)
-    readonly property real cardWidth: Math.max(240, Math.min(360, (gridWidth - 14) / 2))
-    readonly property int cardHeight: 128
-
     // ── 编辑草稿（点卡片打开上浮编辑页，取消即丢弃）─────────
     property bool editing: false
     property var draft: null
     property bool draftIsNew: false
     property int draftIndex: -1
-    property bool closing: false
 
     Component.onCompleted: { Qt.callLater(reload); appPrewarm.start() }
     onBackendChanged: { if (backend) Qt.callLater(reload) }
@@ -152,7 +139,6 @@ PluginPage {
     function cloneRule(r) {
         try { return JSON.parse(JSON.stringify(r)) } catch (e) { return r }
     }
-
 
     function reload() {
         if (!backend) return
@@ -213,33 +199,23 @@ PluginPage {
 
     function applyDraft() {
         if (page.draftIndex < 0 || page.draftIndex >= page.rules.length) return false
-        var list = page.rules.slice()
-        list[page.draftIndex] = page.draft
-        page.rules = list
+        page.rules[page.draftIndex] = page.draft
         return page.save()
     }
 
     function closeEditor(saveIt) {
-        if (page.closing) return          // 面板收起时也会走到这里，防重入
-        page.closing = true
-        var ok = true
         if (saveIt) {
-            ok = page.applyDraft()        // 保存失败就留在编辑页，别悄悄丢掉改动
+            if (!page.applyDraft()) return      // 保存失败就留在编辑页，别悄悄丢掉改动
         } else if (page.draftIsNew && page.draftIndex >= 0 && page.draftIndex < page.rules.length) {
-            var keep = page.rules.slice()            // 新建后取消 → 不留空壳
-            keep.splice(page.draftIndex, 1)
-            page.rules = keep
+            page.rules.splice(page.draftIndex, 1)   // 新建后取消 → 不留空壳
             page.save()
         }
-        if (ok) {
-            page.editing = false
-            page.draft = null
-            page.draftIsNew = false
-            page.draftIndex = -1
-            page.current = -1
-            editorDialog.close()
-        }
-        page.closing = false
+        page.editing = false
+        page.draft = null
+        page.draftIsNew = false
+        page.draftIndex = -1
+        page.current = -1
+        editorDialog.close()
     }
 
     function testDraft() {
@@ -259,11 +235,7 @@ PluginPage {
 
     function doDelete() {
         var i = page.draftIndex
-        if (i >= 0 && i < page.rules.length) {
-            var keep = page.rules.slice()
-            keep.splice(i, 1)
-            page.rules = keep
-        }
+        if (i >= 0 && i < page.rules.length) page.rules.splice(i, 1)
         page.editing = false
         page.draft = null
         page.draftIsNew = false
@@ -275,22 +247,17 @@ PluginPage {
     }
 
     function addRule() {
-        var fresh = {
+        page.rules.push({
             "uid": "", "name": "新自动化", "description": "", "enabled": true, "revert": false,
             "triggers": [{"type": "class_start", "p1": "", "p2": "", "p3": "", "p4": ""}],
             "ruleset": {"enabled": false, "mode": "all", "reversed": false, "rules": []},
             "actions": [{"type": "set_config", "p1": "interactions.hide.state", "p2": "true", "p3": "", "p4": ""}]
-        }
-        // 注意：一律重新赋值一个新数组，不用原地 push/splice。
-        // 原地改不会触发属性变更通知，而且会让 Repeater 在事件派发中途重建 item。
-        var list = page.rules.slice()
-        list.push(fresh)
-        page.rules = list
-        var i = list.length - 1
+        })
+        var i = page.rules.length - 1
         page.current = i
         page.draftIndex = i
         page.draftIsNew = true
-        page.draft = page.cloneRule(fresh)
+        page.draft = page.cloneRule(page.rules[i])
         page.editing = true
         statusText = ""
         page.loadRule()
@@ -1097,10 +1064,11 @@ PluginPage {
         SettingCard {
             Layout.fillWidth: true
             title: "自动化"
-            description: "触发器触发 → 规则集过滤 → 依次执行行动；开启「恢复」后，逆事件（如下课）或规则集不再满足时会自动还原被修改的配置。点任意卡片从下方拉出编辑页，或点「＋」新建。"
+            description: "触发器触发 → 规则集过滤 → 依次执行行动；开启「恢复」后，逆事件（如下课）或规则集不再满足时会自动还原被修改的配置。点下方任意卡片打开上浮编辑页。"
             RowLayout {
                 spacing: 8
-                Button { text: "刷新"; onClicked: Qt.callLater(page.reload) }
+                Button { text: "新建自动化"; highlighted: true; onClicked: page.addRule() }
+                Button { text: "刷新"; onClicked: page.reload() }
             }
         }
 
@@ -1124,405 +1092,279 @@ PluginPage {
         Flow {
             id: cardFlow
             Layout.fillWidth: true
-            spacing: 14
-
-            // 每条自动化一张大卡片：状态圆点 + 名称 + 触发器/行动摘要
+            spacing: 12
+            visible: page.rules.length > 0
             Repeater {
                 model: page.rules.length
-                delegate: Frame {
+                delegate: SettingCard {
                     id: ruleCard
                     property var ruleObj: page.rules[index]
-                    width: page.cardWidth
-                    height: page.cardHeight
-                    radius: page.cardRadius
-                    hoverable: true
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        // 推迟到本次点击派发结束再执行：否则会一边派发一边重建列表 item。
-                        // 直接传下标，不闭包捕获委托作用域。
-                        onClicked: Qt.callLater(page.openEditor, index)
-                    }
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 18
-                        spacing: 10
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Rectangle {
-                                width: 9
-                                height: 9
-                                radius: 5
-                                opacity: (ruleCard.ruleObj && ruleCard.ruleObj.enabled) ? 1 : 0.35
-                                color: Utils.primaryColor
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                typography: Typography.BodyStrong
-                                text: page.cardTitle(ruleCard.ruleObj)
-                                elide: Text.ElideRight
-                            }
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            Layout.alignment: Qt.AlignTop
-                            typography: Typography.Caption
-                            opacity: 0.75
-                            text: page.cardDesc(ruleCard.ruleObj)
-                            wrapMode: Text.WordWrap
-                            elide: Text.ElideRight
-                            maximumLineCount: 5
-                            verticalAlignment: Text.AlignTop
-                        }
-                    }
-                }
-            }
-
-            // 新建卡片：和规则卡片一样大，放在最后
-            Frame {
-                id: newCard
-                width: page.cardWidth
-                height: page.cardHeight
-                radius: page.cardRadius
-                hoverable: true
-                color: newCard.hovered ? Theme.currentTheme.colors.controlSecondaryColor
-                                       : Theme.currentTheme.colors.cardSecondaryColor
-                border.color: newCard.hovered ? Utils.primaryColor
-                                              : Theme.currentTheme.colors.cardBorderColor
-
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Qt.callLater(page.addRule)
-                }
-
-                ColumnLayout {
-                    anchors.centerIn: parent
-                    spacing: 8
-                    Text {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: "＋"
-                        font.pixelSize: 30
-                        color: Utils.primaryColor
-                    }
-                    Text {
-                        Layout.alignment: Qt.AlignHCenter
-                        typography: Typography.Body
-                        text: "新建自动化"
-                    }
+                    width: Math.max(260, Math.min(430, (cardFlow.width - cardFlow.spacing) / 2))
+                    clickable: true
+                    title: page.cardTitle(ruleObj)
+                    description: page.cardDesc(ruleObj)
+                    onClicked: page.openEditor(index)
                 }
             }
         }
     }
 
-    // ══════════════ 编辑页：从下方向上拉出，盖住插件页原来的区域 ══════════════
-    Popup {
+    // ══════════════ 上浮编辑页（改动先落在草稿上，点「保存」才写回）══════════════
+    Dialog {
         id: editorDialog
         modal: true
-        padding: 0
+        title: page.draftIsNew ? "新建自动化" : "编辑自动化"
+        standardButtons: Dialog.Ok | Dialog.Cancel
         closePolicy: Popup.CloseOnEscape
-        onClosed: page.closeEditor(false)
 
-        // 注意：这里刻意不写 parent、也不用 mapToItem 做几何映射——
-        // 那两条路径会在页面构造期进入 QML 引擎的几何/重父级流程，实测会导致主程序崩溃。
-        // 现在只用 Overlay.overlay 的宽高（RinUI 自家 Dialog 同款做法），铺满设置窗口后
-        // 由里面的面板做「从下方拉出」。
-        x: 0
-        y: 0
-        width: Overlay.overlay ? Overlay.overlay.width : 800
-        height: Overlay.overlay ? Overlay.overlay.height : 600
+        property real maxW: Overlay.overlay ? Overlay.overlay.width : 900
+        property real maxH: Overlay.overlay ? Overlay.overlay.height : 800
+        width: Math.min(820, Math.max(380, maxW - 64))
+        height: Math.min(680, Math.max(320, maxH - 64))
 
-        background: Rectangle { color: "transparent" }
+        onOpened: {
+            if (footer && footer.okButton) footer.okButton.text = "保存"
+            if (footer && footer.cancelButton) footer.cancelButton.text = "取消"
+        }
+        onAccepted: page.closeEditor(true)
+        onRejected: page.closeEditor(false)
 
-        Rectangle {
-            id: sheet
-            width: parent.width
-            height: parent.height
-            radius: page.cardRadius
-            color: Theme.currentTheme.colors.backgroundAcrylicColor
-            border.width: Theme.currentTheme.appearance.borderWidth
-            border.color: Theme.currentTheme.colors.windowBorderColor
-
-            // 收起时停在下方，展开时滑到 0
-            y: editorDialog.opened ? 0 : parent.height
-            Behavior on y {
-                NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
-            }
+        ScrollView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
             ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 22
-                spacing: 12
+                width: editorDialog.width - 64
+                spacing: 10
 
-                RowLayout {
+                SettingCard {
                     Layout.fillWidth: true
-                    spacing: 10
-                    Text {
+                    title: "基础设置"
+                    RowLayout {
                         Layout.fillWidth: true
-                        typography: Typography.Subtitle
-                        text: page.draftIsNew ? "新建自动化" : "编辑自动化"
-                    }
-                    Text {
-                        typography: Typography.Caption
-                        opacity: 0.7
-                        text: page.statusText
+                        spacing: 8
+                        Text { text: "名称"; Layout.preferredWidth: 36 }
+                        TextField {
+                            id: nameField
+                            Layout.preferredWidth: 220
+                            placeholderText: "自动化名称"
+                            onTextEdited: page.commit("name", text)
+                        }
+                        Text { text: "描述"; Layout.preferredWidth: 36 }
+                        TextField {
+                            id: descField
+                            Layout.preferredWidth: 300
+                            placeholderText: "显示在卡片上的说明（可空）"
+                            onTextEdited: page.commit("description", text)
+                        }
+                        Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
+                        Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
                     }
                 }
 
-                ScrollView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-
-                    ColumnLayout {
-                        width: sheet.width - 44 - 14
-                        spacing: 12
-
-                        SettingCard {
+                SettingCard {
+                        Layout.fillWidth: true
+                        title: "触发器（任一触发即可）"
+                        description: "定时、间隔、上课/下课/课间/放学/状态变化、上课前、应用启动、收到信号。"
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            title: "基础设置"
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                Text { text: "名称"; Layout.preferredWidth: 36 }
-                                TextField {
-                                    id: nameField
-                                    Layout.preferredWidth: 220
-                                    placeholderText: "自动化名称"
-                                    onTextEdited: page.commit("name", text)
-                                }
-                                Text { text: "描述"; Layout.preferredWidth: 36 }
-                                TextField {
-                                    id: descField
-                                    Layout.preferredWidth: 300
-                                    placeholderText: "显示在卡片上的说明（可空）"
-                                    onTextEdited: page.commit("description", text)
-                                }
-                                Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
-                                Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
-                            }
-                        }
+                            spacing: 6
+                            Repeater {
+                                model: page.trigCount
+                                delegate: RowLayout {
+                                    id: trigRow
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    property int idx: index
+                                    property int ver: page.trigVersion
+                                    property var obj: null
+                                    onVerChanged: initRow()
 
-                    SettingCard {
-                            Layout.fillWidth: true
-                            title: "触发器（任一触发即可）"
-                            description: "定时、间隔、上课/下课/课间/放学/状态变化、上课前、应用启动、收到信号。"
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
-                                Repeater {
-                                    model: page.trigCount
-                                    delegate: RowLayout {
-                                        id: trigRow
-                                        Layout.fillWidth: true
-                                        spacing: 6
-                                        property int idx: index
-                                        property int ver: page.trigVersion
-                                        property var obj: null
-                                        onVerChanged: initRow()
-
-                                        function arr() { var r = page.cur(); return r ? (r.triggers || []) : [] }
-                                        function initRow() {
-                                            var a = arr()
-                                            if (idx >= a.length) { obj = null; return }
-                                            obj = a[idx]
-                                            trigType.currentIndex = Math.max(0, page.trigTypes.indexOf(obj.type || ""))
-                                            refreshFields()
-                                        }
-                                        function refreshFields() {
-                                            if (obj && trigFld.item && trigFld.item.load) trigFld.item.load(obj)
-                                        }
-                                        Component.onCompleted: initRow()
-
-                                        ComboBox {
-                                            id: trigType
-                                            Layout.preferredWidth: 170
-                                            model: page.trigLabels
-                                            onActivated: {
-                                                var r = page.cur(); if (!r || !r.triggers) return
-                                                r.triggers[trigRow.idx] = {"type": page.trigTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
-                                                trigRow.obj = r.triggers[trigRow.idx]
-                                            }
-                                        }
-                                        Loader {
-                                            id: trigFld
-                                            Layout.fillWidth: true
-                                            sourceComponent: page.trigFieldComp(trigRow.obj ? trigRow.obj.type : "")
-                                            onLoaded: trigRow.refreshFields()
-                                        }
-                                        Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeTrigger(trigRow.idx) }
+                                    function arr() { var r = page.cur(); return r ? (r.triggers || []) : [] }
+                                    function initRow() {
+                                        var a = arr()
+                                        if (idx >= a.length) { obj = null; return }
+                                        obj = a[idx]
+                                        trigType.currentIndex = Math.max(0, page.trigTypes.indexOf(obj.type || ""))
+                                        refreshFields()
                                     }
-                                }
-                                Button { text: "+ 添加触发器"; onClicked: page.addTrigger() }
-                            }
-                        }
-
-                    SettingCard {
-                            Layout.fillWidth: true
-                            title: "规则集（条件，满足才执行）"
-                            description: "规则集关闭时无条件执行；开启后按下方规则过滤。"
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
-                                RowLayout {
-                                    spacing: 8
-                                    Switch {
-                                        id: rsEnabled
-                                        text: "启用规则集"
-                                        onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.enabled = checked }
+                                    function refreshFields() {
+                                        if (obj && trigFld.item && trigFld.item.load) trigFld.item.load(obj)
                                     }
+                                    Component.onCompleted: initRow()
+
                                     ComboBox {
-                                        id: rsMode
-                                        Layout.preferredWidth: 120
-                                        model: ["全部满足", "任一满足"]
-                                        onActivated: { var r = page.cur(); if (r && r.ruleset) r.ruleset.mode = (index === 1 ? "any" : "all") }
+                                        id: trigType
+                                        Layout.preferredWidth: 170
+                                        model: page.trigLabels
+                                        onActivated: {
+                                            var r = page.cur(); if (!r || !r.triggers) return
+                                            r.triggers[trigRow.idx] = {"type": page.trigTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
+                                            trigRow.obj = r.triggers[trigRow.idx]
+                                        }
                                     }
-                                    Switch {
-                                        id: rsReversed
-                                        text: "取反"
-                                        onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.reversed = checked }
-                                    }
-                                }
-                                Repeater {
-                                    model: page.ruleCount
-                                    delegate: RowLayout {
-                                        id: ruleRow
+                                    Loader {
+                                        id: trigFld
                                         Layout.fillWidth: true
-                                        spacing: 6
-                                        property int idx: index
-                                        property int ver: page.ruleVersion
-                                        property var obj: null
-                                        onVerChanged: initRow()
-
-                                        function arr() { var r = page.cur(); return (r && r.ruleset) ? (r.ruleset.rules || []) : [] }
-                                        function initRow() {
-                                            var a = arr()
-                                            if (idx >= a.length) { obj = null; return }
-                                            obj = a[idx]
-                                            ruleType.currentIndex = Math.max(0, page.ruleTypes.indexOf(obj.type || ""))
-                                            revSw.checked = !!obj.reversed
-                                            refreshFields()
-                                        }
-                                        function refreshFields() {
-                                            if (obj && ruleFld.item && ruleFld.item.load) ruleFld.item.load(obj)
-                                        }
-                                        Component.onCompleted: initRow()
-
-                                        ComboBox {
-                                            id: ruleType
-                                            Layout.preferredWidth: 170
-                                            model: page.ruleLabels
-                                            onActivated: {
-                                                var r = page.cur(); if (!r || !r.ruleset || !r.ruleset.rules) return
-                                                r.ruleset.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
-                                                ruleRow.obj = r.ruleset.rules[ruleRow.idx]
-                                                revSw.checked = false
-                                            }
-                                        }
-                                        Loader {
-                                            id: ruleFld
-                                            Layout.fillWidth: true
-                                            sourceComponent: page.ruleFieldComp(ruleRow.obj ? ruleRow.obj.type : "")
-                                            onLoaded: ruleRow.refreshFields()
-                                        }
-                                        Switch {
-                                            id: revSw
-                                            text: "取反"
-                                            onToggled: if (obj) obj.reversed = checked
-                                        }
-                                        Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeRuleItem(ruleRow.idx) }
+                                        sourceComponent: page.trigFieldComp(trigRow.obj ? trigRow.obj.type : "")
+                                        onLoaded: trigRow.refreshFields()
                                     }
+                                    Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeTrigger(trigRow.idx) }
                                 }
-                                Button { text: "+ 添加规则"; onClicked: page.addRuleItem() }
                             }
-                        }
-
-                    SettingCard {
-                            Layout.fillWidth: true
-                            title: "行动（顺序执行，可排序）"
-                            description: "运行命令、显示提醒、打开应用、等待、广播信号、设标志、设置配置项、锁定配置项、重启主程序。"
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
-                                Repeater {
-                                    model: page.actCount
-                                    delegate: RowLayout {
-                                        id: actRow
-                                        Layout.fillWidth: true
-                                        spacing: 6
-                                        property int idx: index
-                                        property int ver: page.actVersion
-                                        property var obj: null
-                                        onVerChanged: initRow()
-
-                                        function arr() { var r = page.cur(); return r ? (r.actions || []) : [] }
-                                        function initRow() {
-                                            var a = arr()
-                                            if (idx >= a.length) { obj = null; return }
-                                            obj = a[idx]
-                                            actType.currentIndex = Math.max(0, page.actTypes.indexOf(obj.type || ""))
-                                            refreshFields()
-                                        }
-                                        function refreshFields() {
-                                            if (obj && actFld.item && actFld.item.load) actFld.item.load(obj)
-                                        }
-                                        Component.onCompleted: initRow()
-
-                                        ComboBox {
-                                            id: actType
-                                            Layout.preferredWidth: 170
-                                            model: page.actLabels
-                                            onActivated: {
-                                                var r = page.cur(); if (!r || !r.actions) return
-                                                r.actions[actRow.idx] = {"type": page.actTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
-                                                actRow.obj = r.actions[actRow.idx]
-                                            }
-                                        }
-                                        Loader {
-                                            id: actFld
-                                            Layout.fillWidth: true
-                                            sourceComponent: page.actFieldComp(actRow.obj ? actRow.obj.type : "")
-                                            onLoaded: actRow.refreshFields()
-                                        }
-                                        Button { text: "↑"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, -1) }
-                                        Button { text: "↓"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, 1) }
-                                        Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeAction(actRow.idx) }
-                                    }
-                                }
-                                Button { text: "+ 添加行动"; onClicked: page.addAction() }
-                            }
-                        }
-
-                        SettingCard {
-                            Layout.fillWidth: true
-                            title: "保存与测试"
-                            description: "「保存」写回配置并立即生效；「测试执行」会先保存，再忽略触发器与规则集，立即执行一次当前行动。"
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                Button { text: "测试执行"; onClicked: page.testDraft() }
-                                Button { text: "删除此自动化"; onClicked: page.askDelete() }
-                            }
+                            Button { text: "+ 添加触发器"; onClicked: page.addTrigger() }
                         }
                     }
-                }
 
-                RowLayout {
+                SettingCard {
+                        Layout.fillWidth: true
+                        title: "规则集（条件，满足才执行）"
+                        description: "规则集关闭时无条件执行；开启后按下方规则过滤。"
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            RowLayout {
+                                spacing: 8
+                                Switch {
+                                    id: rsEnabled
+                                    text: "启用规则集"
+                                    onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.enabled = checked }
+                                }
+                                ComboBox {
+                                    id: rsMode
+                                    Layout.preferredWidth: 120
+                                    model: ["全部满足", "任一满足"]
+                                    onActivated: { var r = page.cur(); if (r && r.ruleset) r.ruleset.mode = (index === 1 ? "any" : "all") }
+                                }
+                                Switch {
+                                    id: rsReversed
+                                    text: "取反"
+                                    onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.reversed = checked }
+                                }
+                            }
+                            Repeater {
+                                model: page.ruleCount
+                                delegate: RowLayout {
+                                    id: ruleRow
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    property int idx: index
+                                    property int ver: page.ruleVersion
+                                    property var obj: null
+                                    onVerChanged: initRow()
+
+                                    function arr() { var r = page.cur(); return (r && r.ruleset) ? (r.ruleset.rules || []) : [] }
+                                    function initRow() {
+                                        var a = arr()
+                                        if (idx >= a.length) { obj = null; return }
+                                        obj = a[idx]
+                                        ruleType.currentIndex = Math.max(0, page.ruleTypes.indexOf(obj.type || ""))
+                                        revSw.checked = !!obj.reversed
+                                        refreshFields()
+                                    }
+                                    function refreshFields() {
+                                        if (obj && ruleFld.item && ruleFld.item.load) ruleFld.item.load(obj)
+                                    }
+                                    Component.onCompleted: initRow()
+
+                                    ComboBox {
+                                        id: ruleType
+                                        Layout.preferredWidth: 170
+                                        model: page.ruleLabels
+                                        onActivated: {
+                                            var r = page.cur(); if (!r || !r.ruleset || !r.ruleset.rules) return
+                                            r.ruleset.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
+                                            ruleRow.obj = r.ruleset.rules[ruleRow.idx]
+                                            revSw.checked = false
+                                        }
+                                    }
+                                    Loader {
+                                        id: ruleFld
+                                        Layout.fillWidth: true
+                                        sourceComponent: page.ruleFieldComp(ruleRow.obj ? ruleRow.obj.type : "")
+                                        onLoaded: ruleRow.refreshFields()
+                                    }
+                                    Switch {
+                                        id: revSw
+                                        text: "取反"
+                                        onToggled: if (obj) obj.reversed = checked
+                                    }
+                                    Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeRuleItem(ruleRow.idx) }
+                                }
+                            }
+                            Button { text: "+ 添加规则"; onClicked: page.addRuleItem() }
+                        }
+                    }
+
+                SettingCard {
+                        Layout.fillWidth: true
+                        title: "行动（顺序执行，可排序）"
+                        description: "运行命令、显示提醒、打开应用、等待、广播信号、设标志、设置配置项、锁定配置项、重启主程序。"
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Repeater {
+                                model: page.actCount
+                                delegate: RowLayout {
+                                    id: actRow
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    property int idx: index
+                                    property int ver: page.actVersion
+                                    property var obj: null
+                                    onVerChanged: initRow()
+
+                                    function arr() { var r = page.cur(); return r ? (r.actions || []) : [] }
+                                    function initRow() {
+                                        var a = arr()
+                                        if (idx >= a.length) { obj = null; return }
+                                        obj = a[idx]
+                                        actType.currentIndex = Math.max(0, page.actTypes.indexOf(obj.type || ""))
+                                        refreshFields()
+                                    }
+                                    function refreshFields() {
+                                        if (obj && actFld.item && actFld.item.load) actFld.item.load(obj)
+                                    }
+                                    Component.onCompleted: initRow()
+
+                                    ComboBox {
+                                        id: actType
+                                        Layout.preferredWidth: 170
+                                        model: page.actLabels
+                                        onActivated: {
+                                            var r = page.cur(); if (!r || !r.actions) return
+                                            r.actions[actRow.idx] = {"type": page.actTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
+                                            actRow.obj = r.actions[actRow.idx]
+                                        }
+                                    }
+                                    Loader {
+                                        id: actFld
+                                        Layout.fillWidth: true
+                                        sourceComponent: page.actFieldComp(actRow.obj ? actRow.obj.type : "")
+                                        onLoaded: actRow.refreshFields()
+                                    }
+                                    Button { text: "↑"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, -1) }
+                                    Button { text: "↓"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, 1) }
+                                    Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeAction(actRow.idx) }
+                                }
+                            }
+                            Button { text: "+ 添加行动"; onClicked: page.addAction() }
+                        }
+                    }
+
+                SettingCard {
                     Layout.fillWidth: true
-                    spacing: 8
-                    Item { Layout.fillWidth: true }
-                    Button { text: "取消"; onClicked: page.closeEditor(false) }
-                    Button { text: "保存"; highlighted: true; onClicked: page.closeEditor(true) }
+                    title: "保存与测试"
+                    description: "「保存」写回配置并立即生效；「测试执行」会先保存，再忽略触发器与规则集，立即执行一次当前行动。"
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Button { text: "测试执行"; onClicked: page.testDraft() }
+                        Button { text: "删除此自动化"; onClicked: page.askDelete() }
+                    }
                 }
             }
         }
@@ -1534,7 +1376,7 @@ PluginPage {
         modal: true
         title: "删除自动化"
         standardButtons: Dialog.Ok | Dialog.Cancel
-        width: Math.min(420, Math.max(300, page.width - 96))
+        width: Math.min(420, Math.max(300, editorDialog.maxW - 64))
 
         onOpened: {
             if (footer && footer.okButton) footer.okButton.text = "删除"
