@@ -442,15 +442,31 @@ class RuleEngine(QObject):
         value = coerce(raw, CONFIG_KEYS[key])
         self._apply_config(key, value, uid=uid)
 
+    @staticmethod
+    def _same_value(value: Any, current: Any) -> bool:
+        """判断目标值与现值是否已经一致（避免重复写盘、重复通知主程序）。"""
+        try:
+            if isinstance(value, bool) or isinstance(current, bool):
+                return bool(value) == bool(current)
+            if isinstance(value, (int, float)) and isinstance(current, (int, float)):
+                return float(value) == float(current)
+            return str(value) == str(current)
+        except Exception:  # noqa: BLE001
+            return False
+
     def _apply_config(self, key: str, value: Any, uid: Optional[str] = None) -> None:
         configs = self._api.globalconfig.configs
         parts = key.split(".")
         obj = configs
         for part in parts[:-1]:
             obj = getattr(obj, part)
+        current = getattr(obj, parts[-1], None)
+        if self._same_value(value, current):
+            # 值没变就什么都不做：不 setattr、不落盘、不通知主程序。
+            # 否则规则集反复满足时会把主程序拖进「每秒重应用一次」。
+            return
         if uid and uid in self._active:
-            orig = getattr(obj, parts[-1])
-            self._record(key, orig, uid)
+            self._record(key, current, uid)
         setattr(obj, parts[-1], value)
         # 必须落盘并通知主程序，否则层级/锚点/偏移这类窗口属性不会真正生效
         self._commit_config()

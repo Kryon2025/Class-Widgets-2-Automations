@@ -222,6 +222,23 @@ class Plugin(CW2Plugin):
             return "[]"
 
     @Slot(result=str)
+    def getCachedAppsJson(self) -> str:
+        """已安装应用的磁盘缓存（瞬时返回）。没有缓存时顺手启动后台预枚举。
+
+        绝不在图形线程上同步枚举：那要起一次 PowerShell（约 3 秒），
+        会卡住事件循环，并会让主程序在 QML 引擎层崩溃。
+        """
+        try:
+            import app_index
+            cached = app_index.cached_apps_json()
+            if not cached:
+                app_index.prefetch_async()
+            return cached
+        except Exception as e:
+            logger.warning("[automations] 读取应用缓存失败: {}", e)
+            return ""
+
+    @Slot(result=str)
     def getInstalledAppsJson(self) -> str:
         """已安装应用列表（开始菜单 + App Paths + UWP/商店应用），供「打开应用」选用。"""
         try:

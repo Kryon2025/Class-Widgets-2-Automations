@@ -15,6 +15,7 @@ import json
 import os
 import shlex
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -23,6 +24,11 @@ from loguru import logger
 # 结果缓存秒数：枚举 UWP 要起一次 PowerShell，不该每敲一个字跑一次
 CACHE_SECONDS = 300
 _CACHE: dict = {"at": 0.0, "apps": []}
+
+# 磁盘缓存：后台线程枚举一次后落盘，设置页只读这个缓存。
+# 放临时目录，避免这个可再生文件被打进 .cwplugin 发布包。
+_CACHE_FILE = Path(tempfile.gettempdir()) / "com.kryon.automations.installed_apps.json"
+_prefetch = {"running": False}
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -40,6 +46,58 @@ SHELL_PREFIX = "shell:AppsFolder\\"
 
 def _no_window_flags() -> int:
     return CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
+def _put_cache(apps: list) -> None:
+    _CACHE["apps"] = apps
+    _CACHE["at"] = time.time()
+    try:
+        _CACHE_FILE.write_text(
+            json.dumps({"at": _CACHE["at"], "apps": apps}, ensure_ascii=False),
+            encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        logger.debug("[automations] 写入应用缓存失败: {}", e)
+
+
+def cached_apps_json() -> str:
+    """只读缓存：内存 → 磁盘 → 空串。绝不触发枚举，保证瞬时返回。"""
+    if _CACHE["apps"] and (time.time() - _CACHE["at"]) < CACHE_SECONDS:
+        return json.dumps(_CACHE["apps"], ensure_ascii=False)
+    try:
+        if _CACHE_FILE.is_file():
+            data = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+            apps = data.get("apps") if isinstance(data, dict) else data
+            if isinstance(apps, list) and apps:
+                _CACHE["apps"] = apps
+                _CACHE["at"] = time.time()
+                return json.dumps(apps, ensure_ascii=False)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("[automations] 读取应用缓存失败: {}", e)
+    return ""
+
+
+def prefetch_async(delay: float = 0.0) -> None:
+    """在后台线程里枚举一次并落盘：纯 Python，不碰 Qt，不阻塞图形线程。"""
+    if _prefetch["running"] or cached_apps_json():
+        return
+    _prefetch["running"] = True
+
+    import threading
+
+    def work() -> None:
+        try:
+            if delay:
+                time.sleep(delay)
+            apps = list_apps(force=True)
+            if apps:
+                _put_cache(apps)
+            logger.info("[automations] 后台应用预枚举完成：{} 个", len(apps))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[automations] 后台应用预枚举失败: {}", e)
+        finally:
+            _prefetch["running"] = False
+
+    threading.Thread(target=work, name="automations-app-prefetch", daemon=True).start()
 
 
 def _from_start_menu() -> list:
