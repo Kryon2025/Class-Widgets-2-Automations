@@ -195,6 +195,36 @@ class Plugin(CW2Plugin):
             logger.warning("[automations] 读取主题失败: {}", e)
             return "[]"
 
+    @Slot(result=str)
+    def getInstalledAppsJson(self) -> str:
+        """已安装应用列表（开始菜单 + App Paths + UWP/商店应用），供「打开应用」选用。"""
+        try:
+            import app_index
+            return app_index.list_apps_json()
+        except Exception as e:
+            logger.warning("[automations] 枚举已安装应用失败: {}", e)
+            return "[]"
+
+    @Slot(result=str)
+    def refreshInstalledAppsJson(self) -> str:
+        """强制重新枚举已安装应用（设置页的「刷新列表」）。"""
+        try:
+            import app_index
+            return app_index.list_apps_json(force=True)
+        except Exception as e:
+            logger.warning("[automations] 刷新已安装应用失败: {}", e)
+            return "[]"
+
+    @Slot(str, str, str, result=bool)
+    def launchApp(self, target: str, args: str, cwd: str) -> bool:
+        """立刻启动一次（设置页里的「试运行」）。"""
+        try:
+            import app_index
+            return app_index.launch(target, args, cwd)
+        except Exception as e:
+            logger.warning("[automations] 试运行应用失败: {}", e)
+            return False
+
     @Slot()
     def openWindowDebugger(self) -> None:
         """打开窗口规则调试工具（置顶小窗，显示前台窗口信息）。"""

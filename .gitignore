@@ -1,0 +1,14 @@
+# Python 缓存（不要提交）
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 本地构建产物（发布用的 .cwplugin 由发布流程生成，需保留在仓库中）
+build/
+dist/
+*.egg-info/

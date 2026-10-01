@@ -26,6 +26,9 @@ from typing import Any, Optional
 from PySide6.QtCore import QObject, QTimer, Signal
 from loguru import logger
 
+import app_index
+import day_status
+
 # ── 触发器类型（顺序 = QML 下拉顺序）──────────────────────────
 T_TIME = "time"                 # 定时（HH:MM + 星期）
 T_INTERVAL = "interval"         # 间隔触发（每 N 秒）
@@ -73,7 +76,8 @@ A_SET_FLAG = "set_flag"           # 设标志
 A_SET_CONFIG = "set_config"       # 设置配置项（主题/锚点/层级/隐藏/迷你…）
 A_LOCK = "lock"                   # 锁定配置项
 A_RESTART = "restart"             # 重启主程序
-ACTION_TYPES = (A_RUN, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
+A_LAUNCH = "launch_app"           # 打开应用（已安装应用 / UWP / 指定 exe）
+ACTION_TYPES = (A_RUN, A_LAUNCH, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART)
 
 # set_config 键白名单 → (类型, 默认值)
@@ -124,6 +128,20 @@ def coerce(value: Any, kind: str) -> Any:
         except (TypeError, ValueError):
             return 1.0
     return str(value).strip()
+
+
+# 窗口层级别名：允许用户在「设置配置项 → 层级」里填中文或其他写法
+LAYER_ALIASES: dict[str, str] = {
+    "top": "top", "顶层": "top", "上层": "top", "最上层": "top", "上面": "top", "上": "top",
+    "bottom": "bottom", "底层": "bottom", "下层": "bottom", "最下层": "bottom", "下面": "bottom", "下": "bottom",
+    "normal": "normal", "普通": "normal", "正常": "normal", "中间": "normal", "默认": "normal",
+}
+
+
+def normalize_layer(value: Any) -> str:
+    """把层级写法归一化为 top / bottom / normal；无法识别时原样返回小写值。"""
+    s = str(value).strip().lower()
+    return LAYER_ALIASES.get(s, s)
 
 
 class RuleEngine(QObject):
@@ -283,7 +301,9 @@ class RuleEngine(QObject):
     # ── 课程事件（statusChanged 信号）────────────────────────
 
     def on_status_changed(self, status: str) -> None:
-        now = status or ""
+        host = status or ""
+        # 放学后由插件自己按「课程/课间空档 > 1 小时」判定，其余状态沿用主程序
+        now = self._effective_status(host)
         prev = self._prev_status
         self._prev_status = now
 
@@ -295,7 +315,7 @@ class RuleEngine(QObject):
                     self._maybe_fire(rule, {"type": ttype})
 
         was_class = prev in ("class", "activity")
-        is_class = now in ("class", "activity")
+        is_class = host in ("class", "activity")
 
         if T_STATUS_CHANGE in (t.get("type") for r in self._rules for t in r.get("triggers") or []):
             fire(T_STATUS_CHANGE)
@@ -303,7 +323,7 @@ class RuleEngine(QObject):
             fire(T_CLASS_START)
         elif was_class and not is_class:
             fire(T_CLASS_END)
-        if now == "break":
+        if host == "break":
             fire(T_BREAK_START)
         if now == "free" and prev and prev != "free":
             fire(T_AFTER_SCHOOL)
@@ -348,6 +368,8 @@ class RuleEngine(QObject):
         try:
             if atype == A_RUN:
                 self._do_run(action)
+            elif atype == A_LAUNCH:
+                self._do_launch(action)
             elif atype == A_NOTIFY:
                 self._do_notify(action)
             elif atype == A_BROADCAST:
@@ -374,6 +396,10 @@ class RuleEngine(QObject):
             return
         subprocess.Popen(cmd, shell=True)
         logger.info("[automations] 运行: {}", cmd[:120])
+
+    def _do_launch(self, a: dict) -> None:
+        """打开应用：p1=目标（.lnk / shell:AppsFolder… / .exe / 网址），p2=参数，p3=工作目录。"""
+        app_index.launch(str(a.get("p1") or ""), str(a.get("p2") or ""), str(a.get("p3") or ""))
 
     def _do_notify(self, a: dict) -> None:
         if self._provider is None:
@@ -410,7 +436,10 @@ class RuleEngine(QObject):
         if key not in CONFIG_KEYS:
             logger.warning("[automations] 未知配置键: {}", key)
             return
-        value = coerce(a.get("p2"), CONFIG_KEYS[key])
+        raw = a.get("p2")
+        if key == "preferences.widgets_layer":
+            raw = normalize_layer(raw)
+        value = coerce(raw, CONFIG_KEYS[key])
         self._apply_config(key, value, uid=uid)
 
     def _apply_config(self, key: str, value: Any, uid: Optional[str] = None) -> None:
@@ -423,7 +452,24 @@ class RuleEngine(QObject):
             orig = getattr(obj, parts[-1])
             self._record(key, orig, uid)
         setattr(obj, parts[-1], value)
+        # 必须落盘并通知主程序，否则层级/锚点/偏移这类窗口属性不会真正生效
+        self._commit_config()
         logger.info("[automations] 设置 {} = {}", key, value)
+
+    def _commit_config(self) -> None:
+        """保存配置改动，让主程序重新应用（层级、锚点、偏移、迷你模式等）。"""
+        saved = False
+        for attr in ("config", "globalconfig"):
+            target = getattr(self._api, attr, None)
+            save = getattr(target, "save", None)
+            if callable(save):
+                try:
+                    save()
+                    saved = True
+                except Exception as e:
+                    logger.warning("[automations] 保存全局配置失败({}): {}", attr, e)
+        if not saved:
+            logger.warning("[automations] 未找到可用的配置保存接口，改动可能不会立即生效")
 
     def _do_lock(self, a: dict, uid: Optional[str]) -> None:
         key = str(a.get("p1") or "")
@@ -468,6 +514,8 @@ class RuleEngine(QObject):
                 logger.info("[automations] 恢复 {} = {}", key, orig)
             except Exception as e:
                 logger.warning("[automations] 恢复失败 {}: {}", key, e)
+        # 恢复同样要落盘，否则层级等窗口属性不会还原
+        self._commit_config()
         for name, orig in (rec.get("flags") or {}).items():
             if orig is None:
                 self._flags.pop(name, None)
@@ -641,10 +689,34 @@ class RuleEngine(QObject):
     # ── 工具 ────────────────────────────────────────────────
 
     def _safe_status(self) -> str:
+        """当前时间状态：主程序状态 + 插件自己的放学判定。"""
         try:
-            return self._api.runtime.current_status or "free"
+            host = self._api.runtime.current_status or day_status.HOST_FREE
         except Exception:
-            return "free"
+            host = day_status.HOST_FREE
+        return self._effective_status(host)
+
+    @staticmethod
+    def _now_minutes() -> int:
+        now = datetime.datetime.now()
+        return now.hour * 60 + now.minute
+
+    def _day_entries(self) -> list:
+        """当天全部课程条目（取不到就返回空列表）。"""
+        try:
+            entries = self._api.runtime.current_day_entries or []
+        except Exception:
+            return []
+        return [e for e in entries if isinstance(e, dict)]
+
+    def _effective_status(self, host_status: str) -> str:
+        """把主程序状态换成插件视角下的状态（含放学后判定）。"""
+        try:
+            return day_status.effective_status(
+                host_status, self._day_entries(), self._now_minutes())
+        except Exception as e:
+            logger.debug("[automations] 放学判定失败，沿用主程序状态: {}", e)
+            return str(host_status or day_status.HOST_FREE)
 
     def app_started(self) -> None:
         QTimer.singleShot(1200, self._fire_app_start)
@@ -693,6 +765,7 @@ class RuleEngine(QObject):
         return {
             "uid": str(r.get("uid") or uuid.uuid4().hex[:12]),
             "name": (str(r.get("name") or "").strip() or "未命名自动化")[:60],
+            "description": str(r.get("description") or "").strip()[:120],
             "enabled": bool(r.get("enabled", True)),
             "revert": bool(r.get("revert")),
             "triggers": triggers,
