@@ -6,7 +6,8 @@
 
 模型（每条自动化 = 触发器中任一 + 规则集过滤 + 行动序列）：
     triggers[]  任意一个触发即可
-    ruleset     规则集：enabled / mode(all|any) / reversed / rules[]
+    rulesets    规则集数组：每项 enabled / mode(all|any) / reversed / rules[]
+    rulesetMode 多个规则集之间：all = 全部满足，any = 满足其一
     actions[]   顺序执行（可含 wait）
     revert      是否在逆事件或规则集不再满足时自动恢复
 
@@ -600,10 +601,17 @@ class RuleEngine(QObject):
 
     # ── 规则集求值 ──────────────────────────────────────────
 
-    def _evaluate_ruleset(self, rule: dict) -> bool:
-        rs = rule.get("ruleset") or {}
-        if not rs.get("enabled"):
-            return True
+    @staticmethod
+    def _ruleset_list(rule: dict) -> list:
+        """取出这条自动化的所有规则集；兼容只写了单个 ruleset 的旧数据。"""
+        group = rule.get("rulesets")
+        if isinstance(group, list) and group:
+            return [rs for rs in group if isinstance(rs, dict)]
+        one = rule.get("ruleset")
+        return [one] if isinstance(one, dict) else []
+
+    def _one_ruleset_ok(self, rs: dict) -> bool:
+        """单个规则集内部：按自己的 mode / reversed 判断。"""
         rules = rs.get("rules") or []
         if not rules:
             return True
@@ -613,6 +621,20 @@ class RuleEngine(QObject):
         if rs.get("reversed"):
             satisfied = not satisfied
         return satisfied
+
+    def _evaluate_ruleset(self, rule: dict) -> bool:
+        """规则集整体是否满足。
+
+        每个规则集内部按自己的「全部满足 / 任一满足」判断；
+        多个规则集之间按 rulesetMode：all = 全部满足，any = 满足其一。
+        未启用的规则集不参与；一个启用的都没有时不过滤（保持原语义）。
+        """
+        enabled = [rs for rs in self._ruleset_list(rule) if rs.get("enabled")]
+        if not enabled:
+            return True
+        checks = [self._one_ruleset_ok(rs) for rs in enabled]
+        mode = str(rule.get("rulesetMode") or "all").lower()
+        return any(checks) if mode in ("any", "or") else all(checks)
 
     def _eval_rule(self, r: dict) -> bool:
         t = r.get("type")
@@ -823,9 +845,22 @@ class RuleEngine(QObject):
         if not triggers:
             triggers = [{"type": T_TIME, "p1": "08:00", "p2": "", "p3": "", "p4": "", "reversed": False}]
 
-        rs = r.get("ruleset") or {}
-        rules = [fields(x) for x in (rs.get("rules") or [])
-                 if isinstance(x, dict) and x.get("type") in RULE_TYPES]
+        group = r.get("rulesets")
+        if not isinstance(group, list) or not group:
+            group = [r.get("ruleset") or {}]
+        rulesets = []
+        for rs in group:
+            if not isinstance(rs, dict):
+                continue
+            rulesets.append({
+                "enabled": bool(rs.get("enabled")),
+                "mode": str(rs.get("mode") or "all"),
+                "reversed": bool(rs.get("reversed")),
+                "rules": [fields(x) for x in (rs.get("rules") or [])
+                          if isinstance(x, dict) and x.get("type") in RULE_TYPES],
+            })
+        if not rulesets:
+            rulesets = [{"enabled": False, "mode": "all", "reversed": False, "rules": []}]
 
         actions = [fields(a) for a in (r.get("actions") or [])
                    if isinstance(a, dict) and a.get("type") in ACTION_TYPES]
@@ -840,11 +875,7 @@ class RuleEngine(QObject):
             "enabled": bool(r.get("enabled", True)),
             "revert": bool(r.get("revert")),
             "triggers": triggers,
-            "ruleset": {
-                "enabled": bool(rs.get("enabled")),
-                "mode": str(rs.get("mode") or "all"),
-                "reversed": bool(rs.get("reversed")),
-                "rules": rules,
-            },
+            "rulesets": rulesets,
+            "rulesetMode": str(r.get("rulesetMode") or "all"),
             "actions": actions,
         }

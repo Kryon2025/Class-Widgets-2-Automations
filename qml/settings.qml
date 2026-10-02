@@ -139,6 +139,10 @@ PluginPage {
     property var appPickValue: ""
     property int appPickNonce: 0
 
+    // 多个规则集（rulesets）：rsCount 是外层行数，rsVersion 变更时各规则集重算自己的行数
+    property int rsCount: 0
+    property int rsVersion: 0
+
     function acceptAppPick() {
         appPickNonce++
         appPicking = false
@@ -195,14 +199,22 @@ PluginPage {
         descField.text = r.description || ""
         enabledSwitch.checked = !!r.enabled
         revertSwitch.checked = !!r.revert
-        rsEnabled.checked = !!(r.ruleset && r.ruleset.enabled)
-        rsMode.currentIndex = (r.ruleset && r.ruleset.mode === "any") ? 1 : 0
-        rsReversed.checked = !!(r.ruleset && r.ruleset.reversed)
+        // 兼容旧数据：以前是单个 ruleset，现在统一迁移成 rulesets 数组
+        if (!r.rulesets || !r.rulesets.length) {
+            r.rulesets = [ r.ruleset || {"enabled": false, "mode": "all", "reversed": false, "rules": []} ]
+        }
+        if (!r.rulesetMode) r.rulesetMode = "all"
+        rsGroupMode.currentIndex = (r.rulesetMode === "any") ? 1 : 0
+        var totalRules = 0
+        for (var ri = 0; ri < r.rulesets.length; ri++)
+            totalRules += (((r.rulesets[ri] || {}).rules) || []).length
         page.trigCount = (r.triggers || []).length
-        page.ruleCount = ((r.ruleset && r.ruleset.rules) || []).length
+        page.ruleCount = totalRules
         page.actCount = (r.actions || []).length
+        page.rsCount = r.rulesets.length
         page.trigVersion++
-        page.ruleVersion++
+        page.rsVersion++          // 先让外层重算行数（内层 Repeater 因此建行）
+        page.ruleVersion++        // 再让每一行回填字段
         page.actVersion++
     }
 
@@ -297,7 +309,8 @@ PluginPage {
         var fresh = {
             "uid": "", "name": "新自动化", "description": "", "enabled": true, "revert": false,
             "triggers": [{"type": "class_start", "p1": "", "p2": "", "p3": "", "p4": ""}],
-            "ruleset": {"enabled": false, "mode": "all", "reversed": false, "rules": []},
+            "rulesets": [{"enabled": false, "mode": "all", "reversed": false, "rules": []}],
+            "rulesetMode": "all",
             "actions": [{"type": "set_config", "p1": "interactions.hide.state", "p2": "true", "p3": "", "p4": ""}]
         }
         // 注意：一律重新赋值一个新数组，不用原地 push/splice。
@@ -358,6 +371,7 @@ PluginPage {
             case "flag_is": return t.p1 || ""
             case "run": return t.p1 || ""
             case "launch_app": return page.appNameOf(t.p1)
+            case "close_app": return page.appNameOf(t.p1)
             case "notify": return t.p1 || ""
             case "wait": return t.p1 ? (t.p1 + " 秒") : ""
             case "broadcast": return t.p1 || ""
@@ -392,8 +406,25 @@ PluginPage {
         var out = []
         if (r.description) out.push(String(r.description))
         out.push("触发器：" + page.trigSummary(r))
+        out.push("条件：" + page.rulesSummary(r))
         out.push("行动：" + page.actSummary(r))
         return out.join("\n")
+    }
+
+    function rulesSummary(r) {
+        if (!r) return "无"
+        var list = r.rulesets
+        if (!list || !list.length) list = r.ruleset ? [r.ruleset] : []
+        var on = []
+        for (var i = 0; i < list.length; i++) if (list[i] && list[i].enabled) on.push(list[i])
+        if (!on.length) return "无条件（直接执行）"
+        var parts = []
+        for (var j = 0; j < on.length; j++) {
+            var rs = on[j]
+            parts.push("规则集" + (j + 1) + "（" + ((rs.mode === "any") ? "任一满足" : "全部满足")
+                       + "·" + (((rs.rules) || []).length) + "条）")
+        }
+        return parts.join((r.rulesetMode === "any") ? " 或 " : " 且 ")
     }
 
     // ── 已安装应用（「打开应用」行动的下拉来源）────────────────
@@ -440,16 +471,37 @@ PluginPage {
         var r = page.cur(); if (!r || !r.triggers) return
         r.triggers.splice(i, 1); page.trigCount = r.triggers.length; page.trigVersion++
     }
-    function addRuleItem() {
+    function addRuleset() {
         var r = page.cur(); if (!r) return
-        if (!r.ruleset) r.ruleset = {"enabled": true, "mode": "all", "reversed": false, "rules": []}
-        if (!r.ruleset.rules) r.ruleset.rules = []
-        r.ruleset.rules.push({"type": "current_status", "p1": "class", "p2": "", "p3": "", "p4": "", "reversed": false})
-        page.ruleCount = r.ruleset.rules.length; page.ruleVersion++
+        if (!r.rulesets) r.rulesets = []
+        r.rulesets.push({"enabled": true, "mode": "all", "reversed": false, "rules": []})
+        page.rsCount = r.rulesets.length
+        page.rsVersion++      // 外层建新卡 → 内层据此建行
+        page.ruleVersion++
     }
-    function removeRuleItem(i) {
-        var r = page.cur(); if (!r || !r.ruleset || !r.ruleset.rules) return
-        r.ruleset.rules.splice(i, 1); page.ruleCount = r.ruleset.rules.length; page.ruleVersion++
+    function removeRuleset(i) {
+        var r = page.cur(); if (!r || !r.rulesets) return
+        if (r.rulesets.length <= 1) return          // 至少留一个
+        r.rulesets.splice(i, 1)
+        page.rsCount = r.rulesets.length
+        page.rsVersion++
+        page.ruleVersion++
+    }
+    function addRuleItem(ri) {
+        var r = page.cur(); if (!r || !r.rulesets || !r.rulesets[ri]) return
+        var rs = r.rulesets[ri]
+        if (!rs.rules) rs.rules = []
+        rs.rules.push({"type": "current_status", "p1": "class", "p2": "", "p3": "", "p4": "", "reversed": false})
+        page.rsVersion++      // 该卡重算行数
+        page.ruleVersion++    // 新行回填
+    }
+    function removeRuleItem(ri, i) {
+        var r = page.cur(); if (!r || !r.rulesets || !r.rulesets[ri]) return
+        var rs = r.rulesets[ri]
+        if (!rs.rules) return
+        rs.rules.splice(i, 1)
+        page.rsVersion++
+        page.ruleVersion++
     }
     function addAction() {
         var r = page.cur(); if (!r) return
@@ -1141,9 +1193,14 @@ PluginPage {
                 Connections {
                     target: page
                     function onAppPickNonceChanged() {
-                        if (!page.appPickValue) return
-                        manualF.text = page.appPickValue
-                        if (it) it.p1 = page.appPickValue
+                        if (!page.appPickValue || !it) return
+                        it.p1 = page.appPickValue
+                        load(it)                     // 整行回填：下拉 + 程序框 + 参数 + 目录
+                        var v = String(page.appPickValue)
+                        if (v.toLowerCase().slice(-4) === ".exe" && !(it.p3 || "")) {
+                            var k = v.lastIndexOf("\\")
+                            if (k > 0) { cwdF.text = v.substring(0, k); it.p3 = cwdF.text }
+                        }
                     }
                 }
                 Button {
@@ -1609,79 +1666,152 @@ PluginPage {
 
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        spacing: 6
+                                        spacing: 8
+
                                         RowLayout {
+                                            Layout.fillWidth: true
                                             spacing: 8
-                                            Switch {
-                                                id: rsEnabled
-                                                text: "启用规则集"
-                                                onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.enabled = checked }
-                                            }
+                                            Text { text: "多个规则集之间" }
                                             ComboBox {
-                                                id: rsMode
-                                                Layout.preferredWidth: 120
-                                                model: ["全部满足", "任一满足"]
-                                                onActivated: { var r = page.cur(); if (r && r.ruleset) r.ruleset.mode = (index === 1 ? "any" : "all") }
+                                                id: rsGroupMode
+                                                Layout.preferredWidth: 130
+                                                model: ["全部满足", "满足其一"]
+                                                onActivated: {
+                                                    var r = page.cur()
+                                                    if (r) r.rulesetMode = (index === 1 ? "any" : "all")
+                                                }
                                             }
-                                            Switch {
-                                                id: rsReversed
-                                                text: "取反"
-                                                onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.reversed = checked }
-                                            }
+                                            Item { Layout.fillWidth: true }
+                                            Button { text: "+ 添加规则集"; onClicked: page.addRuleset() }
                                         }
+
                                         Repeater {
-                                            model: page.ruleCount
-                                            delegate: RowLayout {
-                                                id: ruleRow
+                                            model: page.rsCount
+                                            delegate: Frame {
+                                                id: rsRow
                                                 Layout.fillWidth: true
-                                                spacing: 6
+                                                radius: page.cardRadius
                                                 property int idx: index
-                                                property int ver: page.ruleVersion
+                                                property int ver: page.rsVersion
+                                                property int rowCount: 0
                                                 property var obj: null
-                                                onVerChanged: initRow()
+                                                onVerChanged: sync()
+                                                // 刻意不在构造期读数据/动数据：初始化统一由
+                                                // rsVersion 变更驱动，保证发生在 delegate 建好之后。
 
-                                                function arr() { var r = page.cur(); return (r && r.ruleset) ? (r.ruleset.rules || []) : [] }
-                                                function initRow() {
-                                                    var a = arr()
-                                                    if (idx >= a.length) { obj = null; return }
-                                                    obj = a[idx]
-                                                    ruleType.currentIndex = Math.max(0, page.ruleTypes.indexOf(obj.type || ""))
-                                                    revSw.checked = !!obj.reversed
-                                                    refreshFields()
+                                                function rsArr() {
+                                                    var r = page.cur()
+                                                    if (!r || !r.rulesets) return null
+                                                    return (idx < r.rulesets.length) ? r.rulesets[idx] : null
                                                 }
-                                                function refreshFields() {
-                                                    if (obj && ruleFld.item && ruleFld.item.load) ruleFld.item.load(obj)
+                                                function sync() {
+                                                    obj = rsArr()
+                                                    if (!obj) { rowCount = 0; return }
+                                                    rsEnabled.checked = !!obj.enabled
+                                                    rsModeC.currentIndex = (obj.mode === "any") ? 1 : 0
+                                                    rsReversed.checked = !!obj.reversed
+                                                    rowCount = (obj.rules || []).length
                                                 }
-                                                // 刻意不在构造期 initRow()：初始化统一由上面
-                                                // 那次延后的版本号变更（onVerChanged）驱动，
-                                                // 保证发生在 delegate 建好之后。
 
-                                                ComboBox {
-                                                    id: ruleType
-                                                    Layout.preferredWidth: 170
-                                                    model: page.ruleLabels
-                                                    onActivated: {
-                                                        var r = page.cur(); if (!r || !r.ruleset || !r.ruleset.rules) return
-                                                        r.ruleset.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
-                                                        ruleRow.obj = r.ruleset.rules[ruleRow.idx]
-                                                        revSw.checked = false
+                                                ColumnLayout {
+                                                    anchors.fill: parent
+                                                    spacing: 6
+
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: 8
+                                                        Text {
+                                                            typography: Typography.BodyStrong
+                                                            text: "规则集 " + (rsRow.idx + 1)
+                                                        }
+                                                        Switch {
+                                                            id: rsEnabled
+                                                            text: "启用"
+                                                            onToggled: { var o = rsRow.rsArr(); if (o) o.enabled = checked }
+                                                        }
+                                                        ComboBox {
+                                                            id: rsModeC
+                                                            Layout.preferredWidth: 120
+                                                            model: ["全部满足", "任一满足"]
+                                                            onActivated: { var o = rsRow.rsArr(); if (o) o.mode = (index === 1 ? "any" : "all") }
+                                                        }
+                                                        Switch {
+                                                            id: rsReversed
+                                                            text: "取反"
+                                                            onToggled: { var o = rsRow.rsArr(); if (o) o.reversed = checked }
+                                                        }
+                                                        Item { Layout.fillWidth: true }
+                                                        Button {
+                                                            text: "移除该规则集"
+                                                            implicitHeight: 30
+                                                            enabled: page.rsCount > 1
+                                                            onClicked: page.removeRuleset(rsRow.idx)
+                                                        }
                                                     }
+
+                                                    Repeater {
+                                                        model: rsRow.rowCount
+                                                        delegate: RowLayout {
+                                                            id: ruleRow
+                                                            Layout.fillWidth: true
+                                                            spacing: 6
+                                                            property int idx: index
+                                                            property int ver: page.ruleVersion
+                                                            property var obj: null
+                                                            onVerChanged: initRow()
+
+                                                            function arr() {
+                                                                var o = rsRow.rsArr()
+                                                                return o ? (o.rules || []) : []
+                                                            }
+                                                            function initRow() {
+                                                                var a = arr()
+                                                                if (idx >= a.length) { obj = null; return }
+                                                                obj = a[idx]
+                                                                ruleType.currentIndex = Math.max(0, page.ruleTypes.indexOf(obj.type || ""))
+                                                                revSw.checked = !!obj.reversed
+                                                                refreshFields()
+                                                            }
+                                                            function refreshFields() {
+                                                                if (obj && ruleFld.item && ruleFld.item.load) ruleFld.item.load(obj)
+                                                            }
+                                                            // 同样：构造期不动数据，等 ruleVersion 变更。
+
+                                                            ComboBox {
+                                                                id: ruleType
+                                                                Layout.preferredWidth: 170
+                                                                model: page.ruleLabels
+                                                                onActivated: {
+                                                                    var o = rsRow.rsArr(); if (!o) return
+                                                                    if (!o.rules) o.rules = []
+                                                                    o.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
+                                                                    ruleRow.obj = o.rules[ruleRow.idx]
+                                                                    revSw.checked = false
+                                                                }
+                                                            }
+                                                            Loader {
+                                                                id: ruleFld
+                                                                Layout.fillWidth: true
+                                                                sourceComponent: page.ruleFieldComp(ruleRow.obj ? ruleRow.obj.type : "")
+                                                                onLoaded: ruleRow.refreshFields()
+                                                            }
+                                                            Switch {
+                                                                id: revSw
+                                                                text: "取反"
+                                                                onToggled: if (obj) obj.reversed = checked
+                                                            }
+                                                            Button {
+                                                                text: "移除"
+                                                                implicitWidth: 52
+                                                                implicitHeight: 30
+                                                                onClicked: page.removeRuleItem(rsRow.idx, ruleRow.idx)
+                                                            }
+                                                        }
+                                                    }
+                                                    Button { text: "+ 添加规则"; onClicked: page.addRuleItem(rsRow.idx) }
                                                 }
-                                                Loader {
-                                                    id: ruleFld
-                                                    Layout.fillWidth: true
-                                                    sourceComponent: page.ruleFieldComp(ruleRow.obj ? ruleRow.obj.type : "")
-                                                    onLoaded: ruleRow.refreshFields()
-                                                }
-                                                Switch {
-                                                    id: revSw
-                                                    text: "取反"
-                                                    onToggled: if (obj) obj.reversed = checked
-                                                }
-                                                Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeRuleItem(ruleRow.idx) }
                                             }
                                         }
-                                        Button { text: "+ 添加规则"; onClicked: page.addRuleItem() }
                                     }
                         }
                     }
