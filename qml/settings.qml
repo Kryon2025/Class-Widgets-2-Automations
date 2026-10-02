@@ -143,9 +143,39 @@ PluginPage {
     property int rsCount: 0
     property int rsVersion: 0
 
+    // 通用列表挑选（科目/教师/主题/预设/配置项…）：与「选择应用」同一套写法
+    property bool listPicking: false
+    property var listPickCombo: null
+    property var listPickLabels: []
+    property string listPickTitle: ""
+    property int listPickIndex: -1
+    property string listPickValue: ""
+
     function acceptAppPick() {
         appPickNonce++
         appPicking = false
+    }
+
+    function openListPick(combo, labels, title) {
+        page.listPickCombo = combo
+        page.listPickLabels = labels || []
+        page.listPickTitle = title || "选择"
+        page.listPickIndex = -1
+        page.listPickValue = ""
+        if (combo && combo.currentIndex >= 0 && combo.currentIndex < page.listPickLabels.length) {
+            page.listPickIndex = combo.currentIndex
+            page.listPickValue = String(page.listPickLabels[combo.currentIndex])
+        }
+        listPickSearch.text = ""
+        listPickFilter.refresh()
+        page.listPicking = true
+    }
+    function acceptListPick(i) {
+        if (!page.listPickCombo) { page.listPicking = false; return }
+        if (i < 0) return
+        page.listPickCombo.currentIndex = i
+        page.listPickCombo.activated(i)      // 下拉原本的处理逻辑照常执行
+        page.listPicking = false
     }
 
     // ── 编辑草稿（点卡片打开上浮编辑页，取消即丢弃）─────────
@@ -694,6 +724,12 @@ PluginPage {
                 model: page.weekLabels
                 onActivated: if (it) it.p1 = page.weekValues[index]
             }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(weekCombo, page.weekLabels, "选择星期")
+            }
         }
     }
 
@@ -733,6 +769,12 @@ PluginPage {
                 model: page.subjects
                 onActivated: if (it) it.p1 = page.subjects[index]
             }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(subCombo, page.subjects, "选择科目")
+            }
             Text { text: "（在课表设置中维护科目）"; visible: page.subjects.length === 0; opacity: 0.62 }
         }
     }
@@ -752,6 +794,12 @@ PluginPage {
                 Layout.fillWidth: true
                 model: page.statusLabels
                 onActivated: if (it) it.p1 = page.statusValues[index]
+            }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(stCombo, page.statusLabels, "选择时间状态")
             }
         }
     }
@@ -830,6 +878,12 @@ PluginPage {
                 Layout.fillWidth: true
                 model: page.teachers
                 onActivated: if (it) it.p1 = page.teachers[index]
+            }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(teaCombo, page.teachers, "选择教师")
             }
             Text { text: "（在课表设置中维护教师）"; visible: page.teachers.length === 0; opacity: 0.62 }
         }
@@ -1003,6 +1057,12 @@ PluginPage {
                     applyValue()
                 }
             }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(keyCombo, page.keyLabels, "选择配置项")
+            }
             Switch {
                 id: boolSw
                 visible: meta && meta.kind === "bool"
@@ -1016,12 +1076,24 @@ PluginPage {
                 model: page.themeNames
                 onActivated: if (!loading && it) it.p2 = page.themeIds[index]
             }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(themeCombo, page.themeNames, "选择主题")
+            }
             ComboBox {
                 id: anchorCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "anchor"
                 model: page.anchorLabels
                 onActivated: if (!loading && it) it.p2 = page.anchorValues[index]
+            }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(anchorCombo, page.anchorLabels, "选择锚点")
             }
             ComboBox {
                 id: layerCombo
@@ -1050,6 +1122,12 @@ PluginPage {
                 visible: meta && meta.kind === "preset"
                 model: page.presets
                 onActivated: if (!loading && it) it.p2 = page.presets[index]
+            }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(presetCombo, page.presets, "选择预设方案")
             }
             SpinBox {
                 id: numSpin
@@ -1093,6 +1171,12 @@ PluginPage {
                 Layout.fillWidth: true
                 model: page.keyLabels
                 onActivated: if (it) it.p1 = page.configKeys[index].key
+            }
+            Button {
+                text: "列表…"
+                implicitWidth: 68
+                implicitHeight: 30
+                onClicked: page.openListPick(keyCombo, page.keyLabels, "选择配置项")
             }
             ComboBox {
                 id: lockCombo
@@ -2051,6 +2135,126 @@ PluginPage {
                         highlighted: true
                         enabled: !!page.appPickValue
                         onClicked: page.acceptAppPick()
+                    }
+                }
+            }
+        }
+    }
+
+    /* 通用列表挑选弹窗（科目 / 教师 / 主题 / 预设 / 配置项 …）
+       与「选择应用」同一套本页覆盖层：列表与滚动条都是本页自己的，
+       滚动条常驻、可以直接拖，不碰 Qt 自己维护的 ComboBox popup。 */
+    Item {
+        id: listPicker
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: (page.Window && page.Window.height ? page.Window.height : 640) + 160
+        z: 1150
+        visible: page.listPicking
+
+        Rectangle { anchors.fill: parent; color: "#66000000" }
+
+        Rectangle {
+            id: listPickSheet
+            x: 30
+            width: parent.width - 60
+            height: Math.min(parent.height - 80, 460)
+            anchors.verticalCenter: parent.verticalCenter
+            radius: page.cardRadius
+            color: Theme.currentTheme.colors.backgroundAcrylicColor
+            border.width: Theme.currentTheme.appearance.borderWidth
+            border.color: Theme.currentTheme.colors.windowBorderColor
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text { typography: Typography.BodyStrong; text: page.listPickTitle }
+                    Item { Layout.fillWidth: true }
+                    Button { text: "关闭"; onClicked: page.listPicking = false }
+                }
+
+                TextField {
+                    id: listPickSearch
+                    Layout.fillWidth: true
+                    placeholderText: "输入关键字筛选"
+                    onTextChanged: listPickFilter.refresh()
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 6
+                    color: "transparent"
+                    border.width: Theme.currentTheme.appearance.borderWidth
+                    border.color: Theme.currentTheme.colors.windowBorderColor
+
+                    ListView {
+                        id: listPickFilter
+                        anchors.fill: parent
+                        anchors.rightMargin: 14          // 给滚动条留位置
+                        clip: true
+                        spacing: 2
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        function refresh() {
+                            var kw = String(listPickSearch.text || "").toLowerCase()
+                            var out = []
+                            for (var i = 0; i < page.listPickLabels.length; i++) {
+                                if (!kw || String(page.listPickLabels[i]).toLowerCase().indexOf(kw) >= 0)
+                                    out.push(i)
+                            }
+                            listPickFilter.model = out
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            width: parent.width - 40
+                            wrapMode: Text.Wrap
+                            horizontalAlignment: Text.AlignHCenter
+                            visible: listPickFilter.count === 0
+                            text: page.listPickLabels.length === 0
+                                  ? "这个列表现在是空的（主程序里还没有对应内容）。"
+                                  : "没有匹配的项，换个关键字试试。"
+                        }
+
+                        delegate: ItemDelegate {
+                            width: listPickFilter.width
+                            text: page.listPickLabels[modelData]
+                            onClicked: {
+                                page.listPickIndex = modelData
+                                page.listPickValue = String(page.listPickLabels[modelData])
+                            }
+                        }
+
+                        ScrollBar.vertical: ScrollBar {
+                            policy: ScrollBar.AlwaysOn
+                            width: 12
+                            minimumSize: 0.08
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        elide: Text.ElideMiddle
+                        text: page.listPickValue
+                              ? ("已选：" + page.listPickValue)
+                              : "未选择（在上面的列表里点一项）"
+                    }
+                    Button {
+                        text: "确定"
+                        highlighted: true
+                        enabled: page.listPickIndex >= 0
+                        onClicked: page.acceptListPick(page.listPickIndex)
                     }
                 }
             }
