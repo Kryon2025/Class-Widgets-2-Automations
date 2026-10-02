@@ -472,8 +472,38 @@ class RuleEngine(QObject):
         self._commit_config()
         logger.info("[automations] 设置 {} = {}", key, value)
 
+    # 延后合并保存用的状态（放在类上，不需要动 __init__）
+    _config_dirty = False
+    _flush_pending = False
+
     def _commit_config(self) -> None:
-        """保存配置改动，让主程序重新应用（层级、锚点、偏移、迷你模式等）。"""
+        """请求保存配置改动（不在这里同步调用宿主的 save()）。
+
+        为什么绕这一下：本方法会在规则动作回调（状态信号 / QML 槽）里被调用，
+        而宿主 save() 会立刻写盘并让主程序重新应用整套配置（重建窗口属性、层级、
+        锚点、迷你模式等）。在回调里同步做这件事属于**重入**，是这类
+        「Qt6Qml.dll + 0xc0000005 + 固定偏移」崩溃的典型成因。
+
+        所以改成：只置脏标记，等当前回调跑完、回到事件循环后再合并保存一次。
+        同一批改动只落盘一次，写入次数反而更少。
+        """
+        self._config_dirty = True
+        if self._flush_pending:
+            return
+        self._flush_pending = True
+        try:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(150, self._flush_config)
+        except Exception:  # noqa: BLE001
+            # 没有 Qt 可用时退回同步，至少保证功能不丢
+            self._flush_pending = False
+            self._flush_config()
+
+    def _flush_config(self) -> None:
+        self._flush_pending = False
+        if not self._config_dirty:
+            return
+        self._config_dirty = False
         saved = False
         for attr in ("config", "globalconfig"):
             target = getattr(self._api, attr, None)
@@ -484,7 +514,9 @@ class RuleEngine(QObject):
                     saved = True
                 except Exception as e:
                     logger.warning("[automations] 保存全局配置失败({}): {}", attr, e)
-        if not saved:
+        if saved:
+            logger.info("[automations] 配置改动已合并保存（延后到事件循环，避免重入）")
+        else:
             logger.warning("[automations] 未找到可用的配置保存接口，改动可能不会立即生效")
 
     def _do_lock(self, a: dict, uid: Optional[str]) -> None:

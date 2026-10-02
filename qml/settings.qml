@@ -140,9 +140,13 @@ PluginPage {
     property int draftIndex: -1
     property bool closing: false
 
-    // 这里不启动任何「加载后自动枚举应用」的定时器（原因见文件末尾说明）。
-    Component.onCompleted: Qt.callLater(reload)
-    onBackendChanged: { if (backend) Qt.callLater(reload) }
+    // 页面构造期不做任何取数：不启动「加载后自动枚举应用」的定时器，
+    // 也不在构造中调用 Python 槽。等宿主把 backend 绑定
+    // （PluginBackendBridge.get_backend(pluginId)）求值稳定、整页建好之后，
+    // 再回到事件循环里取数——避免「构造中重入 Python/QML 边界」。
+    Component.onCompleted: firstLoad.start()
+    // backend 一到也不马上取数：同样推到页面完全建好之后（与 firstLoad 合并成一次）。
+    onBackendChanged: { if (backend) firstLoad.restart() }
 
     function cur() {
         // 编辑页打开时，所有字段写进草稿；点「保存」才写回配置，取消即丢弃。
@@ -208,8 +212,11 @@ PluginPage {
         page.draft = page.cloneRule(page.rules[i])
         page.editing = true
         statusText = ""
-        page.loadRule()
+        // 先只把面板建出来，数据留到下一个事件循环再填。
+        // 否则 Repeater 会在「创建 delegate 的过程中」被要求换 Loader 组件、
+        // 写字段，属于视图构建中途改数据，主程序会在这条路径上崩溃。
         editorDialog.open()
+        Qt.callLater(page.loadRule)
     }
 
     function applyDraft() {
@@ -294,8 +301,11 @@ PluginPage {
         page.draft = page.cloneRule(fresh)
         page.editing = true
         statusText = ""
-        page.loadRule()
+        // 先只把面板建出来，数据留到下一个事件循环再填。
+        // 否则 Repeater 会在「创建 delegate 的过程中」被要求换 Loader 组件、
+        // 写字段，属于视图构建中途改数据，主程序会在这条路径上崩溃。
         editorDialog.open()
+        Qt.callLater(page.loadRule)
     }
 
     function commit(key, value) {
@@ -1230,23 +1240,26 @@ PluginPage {
     }
 
     // ══════════════ 编辑页：从下方向上拉出，盖住插件页原来的区域 ══════════════
-    Popup {
+    Item {
+        // 编辑面板刻意不用 Popup：
+        // Popup.open() 会把内容重父级到窗口 Overlay 上并顺带跑几何/布局，而这块内容很大
+        // （三张卡 + 三个 Repeater + 三个 Loader），宽高又绑在 Overlay.overlay 上——
+        // 等于「一边被搬进 overlay、一边读 overlay」。实测这就是一点击就崩、
+        // 且崩溃偏移每次都相同的现场。改成本页内的普通 Item，彻底不进那套机制。
         id: editorDialog
-        modal: true
-        padding: 0
-        closePolicy: Popup.CloseOnEscape
-        onClosed: page.closeEditor(false)
+        anchors.fill: parent
+        visible: page.editing
+        z: 1000
 
-        // 注意：这里刻意不写 parent、也不用 mapToItem 做几何映射——
-        // 那两条路径会在页面构造期进入 QML 引擎的几何/重父级流程，实测会导致主程序崩溃。
-        // 现在只用 Overlay.overlay 的宽高（RinUI 自家 Dialog 同款做法），铺满设置窗口后
-        // 由里面的面板做「从下方拉出」。
-        x: 0
-        y: 0
-        width: Overlay.overlay ? Overlay.overlay.width : 800
-        height: Overlay.overlay ? Overlay.overlay.height : 600
+        // 保持原有调用方式，openEditor / addRule 一行都不用改
+        function open() { page.editing = true }
+        function close() { page.editing = false }
 
-        background: Rectangle { color: "transparent" }
+        // 遮罩（原来由 Popup 自带的背景承担）
+        Rectangle {
+            anchors.fill: parent
+            color: "#66000000"
+        }
 
         Rectangle {
             id: sheet
@@ -1258,10 +1271,7 @@ PluginPage {
             border.color: Theme.currentTheme.colors.windowBorderColor
 
             // 收起时停在下方，展开时滑到 0
-            y: editorDialog.opened ? 0 : parent.height
-            Behavior on y {
-                NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
-            }
+            y: page.editing ? 0 : parent.height
 
             ColumnLayout {
                 anchors.fill: parent
@@ -1348,7 +1358,9 @@ PluginPage {
                                         function refreshFields() {
                                             if (obj && trigFld.item && trigFld.item.load) trigFld.item.load(obj)
                                         }
-                                        Component.onCompleted: initRow()
+                                        // 刻意不在构造期 initRow()：初始化统一由上面
+                                        // 那次延后的版本号变更（onVerChanged）驱动，
+                                        // 保证发生在 delegate 建好之后。
 
                                         ComboBox {
                                             id: trigType
@@ -1422,7 +1434,9 @@ PluginPage {
                                         function refreshFields() {
                                             if (obj && ruleFld.item && ruleFld.item.load) ruleFld.item.load(obj)
                                         }
-                                        Component.onCompleted: initRow()
+                                        // 刻意不在构造期 initRow()：初始化统一由上面
+                                        // 那次延后的版本号变更（onVerChanged）驱动，
+                                        // 保证发生在 delegate 建好之后。
 
                                         ComboBox {
                                             id: ruleType
@@ -1482,7 +1496,9 @@ PluginPage {
                                         function refreshFields() {
                                             if (obj && actFld.item && actFld.item.load) actFld.item.load(obj)
                                         }
-                                        Component.onCompleted: initRow()
+                                        // 刻意不在构造期 initRow()：初始化统一由上面
+                                        // 那次延后的版本号变更（onVerChanged）驱动，
+                                        // 保证发生在 delegate 建好之后。
 
                                         ComboBox {
                                             id: actType
@@ -1561,6 +1577,13 @@ PluginPage {
     // 枚举要起一次 PowerShell（约 3 秒），若在图形线程的 Timer 回调里同步执行，
     // 会把事件循环卡住 3 秒，实测会让主程序在 QML 引擎层崩溃（Qt6Qml.dll / 0xc0000005）。
     // 现在改为主程序后台线程预先枚举并落盘缓存，QML 只读缓存（瞬时返回）。
+
+    Timer {
+        id: firstLoad
+        interval: 300
+        repeat: false
+        onTriggered: page.reload()
+    }
 
     Timer {
         id: saveTimer
