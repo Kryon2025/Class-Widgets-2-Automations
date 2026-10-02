@@ -25,9 +25,9 @@ PluginPage {
 
     // ── 类型清单（顺序 = 后端常量表）────────────────────────
     property var trigTypes: ["time", "interval", "class_start", "class_end", "break_start",
-        "after_school", "status_change", "before_class", "app_start", "signal"]
+        "after_school", "status_change", "before_class", "app_start", "signal", "alarm"]
     property var trigLabels: ["定时", "间隔触发", "上课时", "下课时", "课间休息时",
-        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号"]
+        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟"]
 
     property var ruleTypes: ["always_true", "always_false", "today_is", "later_than",
         "current_subject", "next_subject", "prev_subject", "current_status",
@@ -560,6 +560,7 @@ PluginPage {
             case "interval": return trigIntervalComp
             case "before_class": return trigBeforeComp
             case "signal": return trigSignalComp
+            case "alarm": return trigAlarmComp
             default: return null
         }
     }
@@ -619,7 +620,7 @@ PluginPage {
     // ══════════════ 触发器字段组件 ══════════════
     Component {
         id: trigTimeComp
-        RowLayout {
+        ColumnLayout {
             spacing: 6
             property var it: null
             property bool loading: false
@@ -629,20 +630,112 @@ PluginPage {
                 var t = item.p1 || ""
                 if (!/^\d{2}:\d{2}$/.test(t)) { t = "08:00"; item.p1 = t }
                 timeF.setTime(t)
-                dayF.text = item.p2 || ""
+                weekBox.load(item)
+                skipSw.checked = (item.p4 === "1")
                 loading = false
             }
-            TimePicker {
-                id: timeF
-                Layout.preferredWidth: 150
-                use24Hour: true
-                onTimeChanged: if (!loading && it && time) it.p1 = time
-            }
-            TextField {
-                id: dayF
+            RowLayout {
                 Layout.fillWidth: true
-                placeholderText: "星期，留空=每天（如 1,2,3,4,5）"
-                onTextEdited: if (it) it.p2 = text
+                spacing: 8
+                TimePicker {
+                    id: timeF
+                    Layout.preferredWidth: 150
+                    use24Hour: true
+                    onTimeChanged: if (!loading && it && time) it.p1 = time
+                }
+                Text { text: "星期" }
+                WeekdayPicker { id: weekBox }
+                Item { Layout.fillWidth: true }
+            }
+            Switch {
+                id: skipSw
+                text: "自动跳过非上课日（当天课表没有课程时不触发）"
+                onToggled: if (!loading && it) it.p4 = (checked ? "1" : "")
+            }
+        }
+    }
+
+    Component {
+        id: trigAlarmComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            property bool loading: false
+
+            readonly property var soundLabels: ["系统提示音", "警告音", "询问音", "闹钟铃声", "自定义文件…"]
+            readonly property var soundValues: ["", "exclamation", "question", "alarm", "custom"]
+
+            function load(item) {
+                it = item
+                loading = true
+                var t = item.p1 || ""
+                if (!/^\d{2}:\d{2}$/.test(t)) { t = "07:00"; item.p1 = t }
+                alarmTime.setTime(t)
+                alarmWeek.load(item)
+                alarmSkip.checked = (item.p4 === "1")
+                var s = String(item.p3 || "")
+                var idx = soundValues.indexOf(s)
+                if (idx < 0) idx = s ? 4 : 0        // 不是预设值 → 当自定义文件
+                soundCombo.currentIndex = idx
+                customF.text = (idx === 4) ? s : ""
+                loading = false
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                TimePicker {
+                    id: alarmTime
+                    Layout.preferredWidth: 150
+                    use24Hour: true
+                    onTimeChanged: if (!loading && it && time) it.p1 = time
+                }
+                Text { text: "星期" }
+                WeekdayPicker { id: alarmWeek }
+                Item { Layout.fillWidth: true }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text { text: "铃音" }
+                ComboBox {
+                    id: soundCombo
+                    Layout.preferredWidth: 140
+                    model: soundLabels
+                    onActivated: {
+                        if (loading || !it) return
+                        if (index === 4) it.p3 = (customF.text || "alarm")
+                        else it.p3 = soundValues[index]
+                    }
+                }
+                TextField {
+                    id: customF
+                    Layout.fillWidth: true
+                    visible: soundCombo.currentIndex === 4
+                    placeholderText: "自定义铃声文件（.wav）"
+                    onTextEdited: if (it) it.p3 = text
+                }
+                Button {
+                    text: "选择铃声…"
+                    visible: soundCombo.currentIndex === 4
+                    onClicked: {
+                        var p = backend ? backend.pickSoundFile() : ""
+                        if (!p) return
+                        customF.text = p
+                        if (it) it.p3 = p
+                    }
+                }
+            }
+            Switch {
+                id: alarmSkip
+                text: "自动跳过非上课日（当天课表没有课程时不响）"
+                onToggled: if (!loading && it) it.p4 = (checked ? "1" : "")
+            }
+            Text {
+                text: "到点会弹出「系统」级通知（标题 = 自动化名称）并响铃；不需要另外添加行动。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
             }
         }
     }

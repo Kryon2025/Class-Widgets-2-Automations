@@ -255,6 +255,18 @@ class Plugin(CW2Plugin):
             return ""
 
     @Slot(result=str)
+    def pickSoundFile(self) -> str:
+        """系统原生文件选择框：挑一个铃声文件（.wav），取消返回空串。"""
+        try:
+            from PySide6.QtWidgets import QFileDialog
+            path, _ = QFileDialog.getOpenFileName(
+                None, "选择铃声", "", "声音文件 (*.wav);;所有文件 (*.*)")
+            return path or ""
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[automations] 打开铃声选择框失败: {}", e)
+            return ""
+
+    @Slot(result=str)
     def pickFolder(self) -> str:
         """系统原生目录选择框：返回目录，取消则返回空串。"""
         try:

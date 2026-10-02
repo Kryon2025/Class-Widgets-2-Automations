@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import re
 import subprocess
 import uuid
@@ -41,7 +42,8 @@ T_STATUS_CHANGE = "status_change"  # 时间状态变化时
 T_BEFORE_CLASS = "before_class" # 上课前 N 秒
 T_APP_START = "app_start"       # 应用启动时
 T_SIGNAL = "signal"             # 收到信号
-TRIGGER_TYPES = (T_TIME, T_INTERVAL, T_CLASS_START, T_CLASS_END, T_BREAK_START,
+T_ALARM = "alarm"               # 闹钟（到点自己响铃）
+TRIGGER_TYPES = (T_ALARM, T_TIME, T_INTERVAL, T_CLASS_START, T_CLASS_END, T_BREAK_START,
                  T_AFTER_SCHOOL, T_STATUS_CHANGE, T_BEFORE_CLASS, T_APP_START, T_SIGNAL)
 
 # 触发器逆事件（用于恢复）
@@ -81,6 +83,10 @@ A_LAUNCH = "launch_app"           # 打开应用（已安装应用 / UWP / 指�
 A_CLOSE_APP = "close_app"         # 关闭应用（按进程名结束，见 _do_close_app）
 ACTION_TYPES = (A_RUN, A_LAUNCH, A_CLOSE_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART)
+
+# 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
+ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
+                     "Ring01.wav", "Windows Notify.wav")
 
 # set_config 键白名单 → (类型, 默认值)
 CONFIG_KEYS: dict[str, str] = {
@@ -242,6 +248,8 @@ class RuleEngine(QObject):
                 for trig in rule.get("triggers") or []:
                     if self._check_trigger(rule, trig, now):
                         self._maybe_fire(rule, trig)
+                        if trig.get("type") == T_ALARM:
+                            self._ring_alarm(rule, trig)
                         break
         except Exception as e:
             logger.warning("[automations] tick 异常: {}", e)
@@ -252,7 +260,7 @@ class RuleEngine(QObject):
 
     def _check_trigger(self, rule: dict, trig: dict, now: datetime.datetime) -> bool:
         t = trig.get("type")
-        if t == T_TIME:
+        if t in (T_TIME, T_ALARM):
             m = re.match(r"^(\d{1,2}):(\d{2})$", str(trig.get("p1") or "").strip())
             if not m:
                 return False
@@ -260,6 +268,8 @@ class RuleEngine(QObject):
                 return False
             days = str(trig.get("p2") or "").strip()
             if days and str(now.isoweekday()) not in re.split(r"[,，、\s]+", days):
+                return False
+            if trig.get("p4") == "1" and not self._has_class_today():
                 return False
             fp = f"{now.strftime('%Y%m%d')}-{trig.get('p1')}-{days}"
             if trig.get("_fp") == fp:
@@ -292,6 +302,65 @@ class RuleEngine(QObject):
                 return True
             return False
         return False
+
+    def _has_class_today(self) -> bool:
+        """今天课表里有没有「课程」条目。
+
+        主程序的课表本身已经处理过调休（core/schedule/service.py），
+        所以法定假日、调休上课日都会自动算对。
+        """
+        for entry in self._day_entries():
+            if str(entry.get("type") or "") == "class":
+                return True
+        return False
+
+    def _ring_alarm(self, rule: dict, trig: dict) -> None:
+        """闹钟到点：弹一条系统级通知（标题 = 自动化名），再异步响铃。"""
+        title = str(rule.get("name") or "闹钟")
+        when = str(trig.get("p1") or "")
+        try:
+            self._do_notify({"p1": title, "p2": f"闹钟时间到（{when}）",
+                             "p3": "10000", "p4": "3"})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[automations] 闹钟通知失败: {}", e)
+        self._play_sound(str(trig.get("p3") or ""))
+
+    def _play_sound(self, kind: str) -> None:
+        """异步播放铃音，绝不阻塞图形线程。
+
+        kind："" / "default" = 系统提示音；"exclamation" / "question" = 另外两种系统音；
+        "alarm" = 系统自带闹钟声；其余视为自定义 .wav 路径。
+        """
+        try:
+            import winsound
+        except Exception:  # noqa: BLE001
+            logger.debug("[automations] 非 Windows 环境，跳过铃声")
+            return
+        preset = (kind or "").strip()
+        try:
+            if preset in ("", "default", "系统提示音"):
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                return
+            if preset in ("exclamation", "警告音"):
+                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+                return
+            if preset in ("question", "询问音"):
+                winsound.MessageBeep(winsound.MB_ICONQUESTION)
+                return
+            path = preset
+            if preset in ("alarm", "闹钟铃声"):
+                media = Path(os.environ.get("WINDIR") or r"C:\Windows") / "Media"
+                path = ""
+                for name in ALARM_SOUND_FILES:
+                    if (media / name).exists():
+                        path = str(media / name)
+                        break
+            if path and Path(path).exists():
+                winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+            else:
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[automations] 响铃失败({}): {}", kind, e)
 
     def _next_entry(self) -> Optional[dict]:
         try:
