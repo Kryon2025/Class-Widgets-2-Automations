@@ -77,7 +77,8 @@ A_SET_CONFIG = "set_config"       # 设置配置项（主题/锚点/层级/隐�
 A_LOCK = "lock"                   # 锁定配置项
 A_RESTART = "restart"             # 重启主程序
 A_LAUNCH = "launch_app"           # 打开应用（已安装应用 / UWP / 指定 exe）
-ACTION_TYPES = (A_RUN, A_LAUNCH, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
+A_CLOSE_APP = "close_app"         # 关闭应用（按进程名结束，见 _do_close_app）
+ACTION_TYPES = (A_RUN, A_LAUNCH, A_CLOSE_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART)
 
 # set_config 键白名单 → (类型, 默认值)
@@ -370,6 +371,8 @@ class RuleEngine(QObject):
                 self._do_run(action)
             elif atype == A_LAUNCH:
                 self._do_launch(action)
+            elif atype == A_CLOSE_APP:
+                self._do_close_app(action)
             elif atype == A_NOTIFY:
                 self._do_notify(action)
             elif atype == A_BROADCAST:
@@ -396,6 +399,26 @@ class RuleEngine(QObject):
             return
         subprocess.Popen(cmd, shell=True)
         logger.info("[automations] 运行: {}", cmd[:120])
+
+    def _do_close_app(self, a: dict) -> None:
+        """关闭应用：按进程名结束（taskkill /IM <名字> /F）。
+
+        p1 可以是完整 .exe 路径，也可以只写进程名（chrome.exe / chrome）。
+        用 Popen 发出去就返回，不等待、不阻塞图形线程。
+        说明：UWP/商店应用没有独立 exe，按进程名关不掉。
+        """
+        target = str(a.get("p1") or "").strip()
+        if not target:
+            return
+        name = target.replace("/", "\\").rsplit("\\", 1)[-1]
+        if not name.lower().endswith(".exe"):
+            name += ".exe"
+        try:
+            subprocess.Popen(["taskkill", "/IM", name, "/F"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.info("[automations] 关闭应用: {}", name)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[automations] 关闭应用失败({}): {}", name, e)
 
     def _do_launch(self, a: dict) -> None:
         """打开应用：p1=目标（.lnk / shell:AppsFolder… / .exe / 网址），p2=参数，p3=工作目录。"""

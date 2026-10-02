@@ -238,6 +238,32 @@ class Plugin(CW2Plugin):
             logger.warning("[automations] 读取应用缓存失败: {}", e)
             return ""
 
+    @Slot(result=str)
+    def pickExeFile(self) -> str:
+        """系统原生文件选择框：挑一个 .exe，返回完整路径（取消则返回空串）。
+
+        只在用户点「浏览…」时调用，是主动触发的模态框，
+        不参与 QML 布局，也不触碰任何界面对象，因此没有崩溃风险。
+        """
+        try:
+            from PySide6.QtWidgets import QFileDialog
+            path, _ = QFileDialog.getOpenFileName(
+                None, "选择程序", "", "可执行文件 (*.exe);;所有文件 (*.*)")
+            return path or ""
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[automations] 打开文件选择框失败: {}", e)
+            return ""
+
+    @Slot(result=str)
+    def pickFolder(self) -> str:
+        """系统原生目录选择框：返回目录，取消则返回空串。"""
+        try:
+            from PySide6.QtWidgets import QFileDialog
+            return QFileDialog.getExistingDirectory(None, "选择工作目录", "") or ""
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[automations] 打开目录选择框失败: {}", e)
+            return ""
+
     @Slot(result=bool)
     def prefetchAppsAsync(self) -> bool:
         """后台线程强制重枚举安装应用（不阻塞界面）。

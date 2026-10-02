@@ -37,9 +37,9 @@ PluginPage {
         "当前教师是", "下节课教师是"]
 
     property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
-        "set_config", "lock", "restart", "launch_app"]
+        "set_config", "lock", "restart", "launch_app", "close_app"]
     property var actLabels: ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
-        "设置配置项", "锁定配置项", "重启主程序", "打开应用"]
+        "设置配置项", "锁定配置项", "重启主程序", "打开应用", "关闭应用"]
 
     // ── 下拉选项（值数组与后端约定一致）────────────────────
     property var statusLabels: ["上课", "课间休息", "放学后", "活动", "预备"]
@@ -504,6 +504,7 @@ PluginPage {
             case "set_config": return actSetConfigComp
             case "lock": return actLockComp
             case "launch_app": return actLaunchComp
+            case "close_app": return actCloseComp
             default: return null
         }
     }
@@ -1051,6 +1052,45 @@ PluginPage {
     }
 
     Component {
+        id: actCloseComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+
+            function load(item) {
+                it = item
+                exeF.text = item.p1 || ""
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                TextField {
+                    id: exeF
+                    Layout.fillWidth: true
+                    placeholderText: "要关闭的程序（进程名或 .exe 路径，例如 chrome.exe）"
+                    onTextEdited: if (it) it.p1 = text
+                }
+                Button {
+                    text: "选择程序…"
+                    onClicked: {
+                        var p = backend ? backend.pickExeFile() : ""
+                        if (!p) return
+                        exeF.text = p
+                        if (it) it.p1 = p
+                    }
+                }
+            }
+            Text {
+                text: "按进程名强制结束（taskkill /F）。UWP / 商店应用没有独立 exe，关不掉。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
+        }
+    }
+
+    Component {
         id: actLaunchComp
         ColumnLayout {
             spacing: 6
@@ -1106,6 +1146,23 @@ PluginPage {
                         if (it) it.p1 = page.appPickValue
                     }
                 }
+                Button {
+                    text: "浏览…"
+                    onClicked: {
+                        var p = backend ? backend.pickExeFile() : ""
+                        if (!p) return
+                        manualF.text = p
+                        if (!it) return
+                        it.p1 = p
+                        // 选了 .exe 就把它所在目录填进工作目录（工作目录原本为空时）
+                        var k = p.lastIndexOf("\\")
+                        if (k > 0 && !(it.p3 || "")) {
+                            var dir = p.substring(0, k)
+                            cwdF.text = dir
+                            it.p3 = dir
+                        }
+                    }
+                }
                 TextField {
                     id: argsF
                     Layout.preferredWidth: 150
@@ -1125,6 +1182,15 @@ PluginPage {
                     Layout.fillWidth: true
                     placeholderText: "工作目录（留空 = 应用自身目录）"
                     onTextEdited: if (it) it.p3 = text
+                }
+                Button {
+                    text: "选择目录…"
+                    onClicked: {
+                        var d = backend ? backend.pickFolder() : ""
+                        if (!d) return
+                        cwdF.text = d
+                        if (it) it.p3 = d
+                    }
                 }
             }
         }
