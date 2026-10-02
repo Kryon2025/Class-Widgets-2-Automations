@@ -680,7 +680,7 @@ PluginPage {
                 model: page.subjects
                 onActivated: if (it) it.p1 = page.subjects[index]
             }
-            Text { text: "（在课表设置中维护科目）"; visible: page.subjects.length === 0; color: "#888888" }
+            Text { text: "（在课表设置中维护科目）"; visible: page.subjects.length === 0; opacity: 0.62 }
         }
     }
 
@@ -778,7 +778,7 @@ PluginPage {
                 model: page.teachers
                 onActivated: if (it) it.p1 = page.teachers[index]
             }
-            Text { text: "（在课表设置中维护教师）"; visible: page.teachers.length === 0; color: "#888888" }
+            Text { text: "（在课表设置中维护教师）"; visible: page.teachers.length === 0; opacity: 0.62 }
         }
     }
 
@@ -1143,20 +1143,21 @@ PluginPage {
                 anchors.fill: parent
                 spacing: 12
 
-                Text {
-                    typography: Typography.BodyStrong
-                    text: "自动化"
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        typography: Typography.BodyStrong
+                        text: "自动化"
+                        Layout.fillWidth: true
+                    }
+                    Button { text: "刷新"; onClicked: Qt.callLater(page.reload) }
                 }
                 Text {
                     text: "触发器触发 → 规则集过滤 → 依次执行行动；开启「恢复」后，逆事件（如下课）或规则集不再满足时会自动还原被修改的配置。点任意卡片从下方拉出编辑页，或点「＋」新建。"
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
                 }
-
-                    RowLayout {
-                        spacing: 8
-                        Button { text: "刷新"; onClicked: Qt.callLater(page.reload) }
-                    }
             }
         }
 
@@ -1164,7 +1165,7 @@ PluginPage {
             Layout.fillWidth: true
             visible: page.statusText.length > 0
             text: page.statusText
-            color: "#888888"
+            opacity: 0.62
             wrapMode: Text.Wrap
         }
 
@@ -1172,7 +1173,7 @@ PluginPage {
             id: emptyHint
             Layout.fillWidth: true
             visible: page.rules.length === 0
-            color: "#888888"
+            opacity: 0.62
             wrapMode: Text.Wrap
             text: "还没有自动化规则，点上方「新建自动化」创建第一条。\n例如「上课隐藏小组件并自动恢复」：触发器选「上课时」，行动选「设置配置项」→「隐藏小组件」→ 开，再打开「恢复」开关，下课时即自动还原。"
         }
@@ -1348,8 +1349,7 @@ PluginPage {
             width: parent.width - 32
             // 高度封顶到一个窗口：内容区可滚动，不封顶的话面板会比视口还高，
             // 底部的按钮就会被挤到看不见的地方。
-            height: Math.min(parent.height - 32,
-                             (page.Window && page.Window.height ? page.Window.height : parent.height) - 32)
+            height: parent.height - 32      // 跟随面板（窗口 × 1.06），底边一起探出屏幕
             x: 16
             radius: page.cardRadius
             // 颜色一律跟随主程序主题，不写死颜色值。
@@ -1396,35 +1396,10 @@ PluginPage {
                         text: page.draftIsNew ? "放弃新建" : "删除此自动化"
                         onClicked: page.draftIsNew ? page.closeEditor(false) : page.askDelete()
                     }
+                    Button { text: "测试执行"; onClicked: page.testDraft() }
                     Item { Layout.fillWidth: true }
                     Button { text: "取消"; onClicked: page.closeEditor(false) }
                     Button { text: "保存"; highlighted: true; onClicked: page.closeEditor(true) }
-                }
-
-                Frame {
-                    Layout.fillWidth: true
-                    radius: page.cardRadius
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 12
-
-                        Text {
-                            typography: Typography.BodyStrong
-                            text: "保存与测试"
-                        }
-                        Text {
-                            text: "「保存」写回配置并立即生效；「测试执行」会先保存，再忽略触发器与规则集，立即执行一次当前行动。"
-                            wrapMode: Text.Wrap
-                            Layout.fillWidth: true
-                        }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                Button { text: "测试执行"; onClicked: page.testDraft() }
-                            }
-                    }
                 }
 
                 ScrollView {
@@ -1458,14 +1433,16 @@ PluginPage {
                                         Text { text: "名称"; Layout.preferredWidth: 36 }
                                         TextField {
                                             id: nameField
-                                            Layout.preferredWidth: 220
+                                            Layout.fillWidth: true
+                                            Layout.preferredWidth: 140
                                             placeholderText: "自动化名称"
                                             onTextEdited: page.commit("name", text)
                                         }
                                         Text { text: "描述"; Layout.preferredWidth: 36 }
                                         TextField {
                                             id: descField
-                                            Layout.preferredWidth: 300
+                                            Layout.fillWidth: true
+                                            Layout.preferredWidth: 180
                                             placeholderText: "显示在卡片上的说明（可空）"
                                             onTextEdited: page.commit("description", text)
                                         }
