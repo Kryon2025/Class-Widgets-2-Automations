@@ -238,6 +238,17 @@ class Plugin(CW2Plugin):
             logger.warning("[automations] 读取应用缓存失败: {}", e)
             return ""
 
+    @Slot(result=bool)
+    def prefetchAppsAsync(self) -> bool:
+        """后台线程强制重枚举安装应用（不阻塞界面）。
+
+        QML 侧轮询 getCachedAppsJson() 取结果即可，不要用会同步跑
+        PowerShell 的 refreshInstalledAppsJson()。
+        """
+        import app_index
+        app_index.prefetch_async(force=True)
+        return True
+
     @Slot(result=str)
     def getInstalledAppsJson(self) -> str:
         """已安装应用列表（开始菜单 + App Paths + UWP/商店应用），供「打开应用」选用。"""

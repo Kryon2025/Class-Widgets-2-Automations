@@ -1088,7 +1088,6 @@ PluginPage {
                         page.appPicking = true
                     }
                 }
-                Button { text: "刷新列表"; onClicked: page.ensureApps(true) }
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -1299,10 +1298,11 @@ PluginPage {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        // 高度按窗口自适应：小窗口时也保证面板不超出一屏，
-        // 内部的 ScrollView 才能把「触发器 / 规则集 / 行动」全部滚到；
-        // 同时也避免面板把宿主页面撑出多余的滚动条。
-        height: Math.max(320, Math.min((page.Window && page.Window.height ? page.Window.height : 640) - 140, 620))
+        // 两个要求同时满足：
+        //   · 面板本身比可视区高 90px → 底边探出屏幕，Sheet 的底边永远看不见（想要的观感）
+        //   · Sheet 内容区加 112 下边距（见下面 ColumnLayout）→ 内容仍在屏幕内，
+        //     内部 ScrollView 完整可见，触发器/规则集/行动都能滚到
+        height: Math.max(320, (page.Window && page.Window.height ? page.Window.height : 640) - 140) + 90
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
@@ -1366,6 +1366,9 @@ PluginPage {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 22
+                // 下边距多留 90：那 90px 正是面板探出屏幕的部分，
+                // 内容绕开它，于是「面板探出」与「内容全在一屏内」同时成立。
+                anchors.bottomMargin: 112
                 spacing: 12
 
                 RowLayout {
@@ -1740,10 +1743,27 @@ PluginPage {
 
         onVisibleChanged: if (visible) {
             appPickSearch.text = ""
-            // 先读缓存：页面默认不做加载期枚举（那会在图形线程上同步跑 PowerShell，
-            // 实测会让主程序崩），所以 appLabels 很可能是空的——空列表连滚动条都不会有。
+            // 读一次缓存即可：getCachedAppsJson() 内部在缓存为空时会触发
+            // app_index.prefetch_async()（后台线程枚举，不阻塞图形线程）。
             page.ensureApps(false)
             appPickList.refresh()
+            appPoll.restart()          // 抓到之前每隔 800ms 自动重读一次
+        }
+
+        // 后台枚举完成后自动把列表补上，用户不需要点任何按钮
+        Timer {
+            id: appPoll
+            interval: 800
+            repeat: true
+            property int tries: 0
+            onTriggered: {
+                if (page.appLabels.length > 0 || tries++ > 25) {
+                    appPoll.stop()
+                    tries = 0
+                }
+                page.ensureApps(false)
+                appPickList.refresh()
+            }
         }
 
         Rectangle { anchors.fill: parent; color: "#66000000" }
@@ -1813,7 +1833,7 @@ PluginPage {
                             horizontalAlignment: Text.AlignHCenter
                             visible: appPickList.count === 0
                             text: page.appLabels.length === 0
-                                  ? "应用列表还是空的。回到编辑器点一次「刷新列表」抓取（约 3 秒，只抓一次，之后都走缓存）。"
+                                  ? "正在获取应用列表…（首次约 3 秒，后台完成会自动出现；不用点任何按钮）"
                                   : "没有匹配的应用，换个关键字试试。"
                         }
 
@@ -1842,6 +1862,15 @@ PluginPage {
                         Layout.fillWidth: true
                         elide: Text.ElideMiddle
                         text: page.appPickValue ? ("已选：" + page.appPickValue) : "未选择（在上面的列表里点一项）"
+                    }
+                    Button {
+                        text: "重新抓取"
+                        onClicked: {
+                            if (backend) backend.prefetchAppsAsync()
+                            page.appLabels = []
+                            appPickList.refresh()
+                            appPoll.restart()
+                        }
                     }
                     Button {
                         text: "确定"

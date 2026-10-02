@@ -76,9 +76,12 @@ def cached_apps_json() -> str:
     return ""
 
 
-def prefetch_async(delay: float = 0.0) -> None:
-    """在后台线程里枚举一次并落盘：纯 Python，不碰 Qt，不阻塞图形线程。"""
-    if _prefetch["running"] or cached_apps_json():
+def prefetch_async(delay: float = 0.0, force: bool = False) -> None:
+    """在后台线程里枚举一次并落盘：纯 Python，不碰 Qt，不阻塞图形线程。
+
+    force=True 时即使已有缓存也重新枚举（界面上的「重新抓取」用）。
+    """
+    if _prefetch["running"] or (not force and cached_apps_json()):
         return
     _prefetch["running"] = True
 
