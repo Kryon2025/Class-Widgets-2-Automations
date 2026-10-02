@@ -1262,16 +1262,22 @@ PluginPage {
         }
 
         Rectangle {
+            // 面板 = 一张「从下方升起的卡片」：四周留边距 + 圆角 + 滑入动画。
+            // 里面再放三张模块卡（触发器 / 规则集 / 行动），层级和卡片列表页保持一致。
             id: sheet
-            width: parent.width
-            height: parent.height
+            width: parent.width - 32
+            height: parent.height - 32
+            x: 16
             radius: page.cardRadius
             color: Theme.currentTheme.colors.backgroundAcrylicColor
             border.width: Theme.currentTheme.appearance.borderWidth
             border.color: Theme.currentTheme.colors.windowBorderColor
 
-            // 收起时停在下方，展开时滑到 0
-            y: page.editing ? 0 : parent.height
+            // 收起时停在屏幕外，展开时升到 y = 16
+            y: page.editing ? 16 : parent.height
+            Behavior on y {
+                NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+            }
 
             ColumnLayout {
                 anchors.fill: parent
@@ -1533,7 +1539,6 @@ PluginPage {
                                 Layout.fillWidth: true
                                 spacing: 8
                                 Button { text: "测试执行"; onClicked: page.testDraft() }
-                                Button { text: "删除此自动化"; onClicked: page.askDelete() }
                             }
                         }
                     }
@@ -1542,6 +1547,12 @@ PluginPage {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
+                    // 删除放在这里：原来埋在滚动区最底部的「保存与测试」卡里，
+                    // 要一路滚到底才看得到，等于没有。新建状态则显示「放弃新建」。
+                    Button {
+                        text: page.draftIsNew ? "放弃新建" : "删除此自动化"
+                        onClicked: page.draftIsNew ? page.closeEditor(false) : page.askDelete()
+                    }
                     Item { Layout.fillWidth: true }
                     Button { text: "取消"; onClicked: page.closeEditor(false) }
                     Button { text: "保存"; highlighted: true; onClicked: page.closeEditor(true) }
