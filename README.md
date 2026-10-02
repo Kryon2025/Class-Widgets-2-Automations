@@ -1,6 +1,20 @@
-# Kryon 自动化
+<div align="center">
 
-为 Class Widgets 2 提供自动化能力，注册为官方 `AutomationTask`，随主程序每秒调度，无需自建后台线程。（此插件由Deepseek V4 Flash开发）
+<img src="icon.png" height="120" alt="Kryon的自动化（类ClassIsland自动化）">
+<h1>Kryon 自动化</h1>
+
+<p>为 Class Widgets 2 提供自动化能力，注册为官方 <code>AutomationTask</code>，随主程序每秒调度，无需自建后台线程。（此插件由Deepseek V4 Flash开发）</p>
+
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.1.1-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
+[![星标](https://img.shields.io/github/stars/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&color=orange&label=%E6%98%9F%E6%A0%87)](https://github.com/Kryon2025/Class-Widgets-2-Automations)
+[![开源许可](https://img.shields.io/github/license/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/LICENSE)
+[![下载量](https://img.shields.io/github/downloads/Kryon2025/Class-Widgets-2-Automations/total.svg?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=green&style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
+
+</div>
+
+> [!NOTE]
+> 当前版本 **1.1.1**，要求 Class Widgets 2 的插件 API `>=0.6.0`。
+> 在 [插件广场](https://plaza.cw.rinlit.cn/plugins/com.kryon.automations) 可以一键安装/更新，也可以在 Release 页下载 `.cwplugin` 手动导入。
 
 ## 功能特性
 
