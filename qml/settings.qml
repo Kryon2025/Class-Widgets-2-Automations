@@ -1272,8 +1272,9 @@ PluginPage {
                              (page.Window && page.Window.height ? page.Window.height : parent.height) - 32)
             x: 16
             radius: page.cardRadius
-            // 浅灰面板
-            color: "#F1F2F4"
+            // 颜色一律跟随主程序主题，不写死颜色值。
+            // （试过写死浅灰 #F1F2F4：白卡片叠在白面板上对比度太低，设置项看不清。）
+            color: Theme.currentTheme.colors.backgroundAcrylicColor
             border.width: Theme.currentTheme.appearance.borderWidth
             border.color: Theme.currentTheme.colors.windowBorderColor
 
