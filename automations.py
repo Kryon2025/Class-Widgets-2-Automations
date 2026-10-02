@@ -166,6 +166,7 @@ class RuleEngine(QObject):
         self._active: dict[str, dict] = {}   # uid -> {"keys": {path: orig}, "rule": rule}
         self._flag_originals: dict[str, Optional[str]] = {}
         self._provider = None
+        self._notify_unregistered_warned = False
         self._prev_status = ""
 
         self._tick_timer = QTimer(self)   # 兜底 tick（若未注册官方任务）
@@ -499,21 +500,35 @@ class RuleEngine(QObject):
         """打开应用：p1=目标（.lnk / shell:AppsFolder… / .exe / 网址），p2=参数，p3=工作目录。"""
         app_index.launch(str(a.get("p1") or ""), str(a.get("p2") or ""), str(a.get("p3") or ""))
 
+    def set_notification_provider(self, provider) -> None:
+        """接收插件在 on_load 里注册好的通知 provider。
+
+        必须在插件上下文内注册（主程序 components.py:107 会拒绝上下文外的注册），
+        所以注册放在 on_load，引擎只负责持有句柄并推送。
+        """
+        self._provider = provider
+        self._notify_unregistered_warned = False
+
     def _do_notify(self, a: dict) -> None:
+        """弹一条灵动通知（用 on_load 注册好的 provider，不再现场注册）。"""
         if self._provider is None:
-            try:
-                self._provider = self._api.notification.get_provider(
-                    "com.kryon.automations", name="Kryon 自动化")
-            except Exception as e:
-                logger.warning("[automations] 注册通知失败: {}", e)
-                return
+            if not self._notify_unregistered_warned:
+                self._notify_unregistered_warned = True
+                logger.warning(
+                    "[automations] 通知 provider 未注册，已跳过这条提醒。"
+                    "（原因通常是插件 on_load 里 register_provider 失败）")
+            return
         try:
             duration = max(0, int(float(a.get("p3") or 4000)))
             level = max(0, min(3, int(float(a.get("p4") or 0))))
-            self._provider.push(level,
-                                str(a.get("p1") or "自动化提醒"),
-                                str(a.get("p2") or ""),
-                                duration, True)
+            # 用关键字参数：参数名与 com.rinlit.countdowndays 里已在用的写法一致
+            self._provider.push(
+                level=level,
+                title=str(a.get("p1") or "自动化提醒"),
+                message=str(a.get("p2") or ""),
+                duration=duration,
+                closable=True,
+            )
         except Exception as e:
             logger.warning("[automations] 通知失败: {}", e)
 

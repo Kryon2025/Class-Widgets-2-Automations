@@ -1,5 +1,20 @@
 # 更新日志
 
+## 1.1.4
+
+### 修复
+
+- **修「显示提醒 / 闹钟」发不出灵动通知**（控制台报未注册）。
+  通知 provider 原来是在**触发那一刻**才调用 `api.notification.get_provider()`，
+  而主程序要求注册必须在插件上下文内完成（`components.py:107` →
+  `No plugin context available`；`loader.py:302` 在加载完就清空了 `current_plugin`），
+  所以注册必然失败、通知被静默跳过。
+  现改为照 `com.rinlit.countdowndays` 的做法：在 `on_load` 里
+  `register_provider(provider_id=self.pid, name=..., use_system_notify=True)`，
+  把返回的 provider 交给引擎持有，触发时直接用这个句柄 `push`。
+  拿不到 provider 时只在日志里说明一次，不再每次静默失败。
+
+
 ## 1.1.3
 
 ### 新增

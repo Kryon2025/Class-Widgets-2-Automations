@@ -57,9 +57,26 @@ class Plugin(CW2Plugin):
 
     def on_load(self):
         super().on_load()
+
+        # 通知 provider 必须在这里注册：主程序只在插件回调（on_load 等）期间设置
+        # current_plugin，等自动化触发时再注册会被拒绝
+        # （components.py:107 → No plugin context available），灵动通知就发不出去。
+        provider = None
+        try:
+            provider = self.api.notification.register_provider(
+                provider_id=getattr(self, "pid", None) or "com.kryon.automations",
+                name="Kryon 自动化 / Kryon Automations",
+                use_system_notify=True,
+            )
+            logger.info("[automations] 通知 provider 已注册")
+        except Exception as e:
+            logger.warning("[automations] 注册通知 provider 失败: {}", e)
+
         storage = _app_root() / "configs" / "plugins" / CFG_NAME
         try:
             self._engine = RuleEngine(self.api, storage)
+            if provider is not None:
+                self._engine.set_notification_provider(provider)
             self._engine.load()
             if HAS_OFFICIAL_TASK:
                 try:
