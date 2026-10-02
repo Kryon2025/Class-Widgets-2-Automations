@@ -16,44 +16,6 @@ import ClassWidgets.Plugins
 PluginPage {
     id: page
     pluginId: "com.kryon.automations"
-
-    /*!
-        带常驻右侧滚动条的下拉框。
-
-        默认 ComboBox 的下拉列表只在滚动时才出现细滚动条，触屏用手滑很慢；
-        这里给列表挂一条一直显示、可以直接拖的滚动条（拖比滑快得多），
-        并加宽到 12px 方便手指按住。列表最长 360px，超出即可拖。
-    */
-    component ScrollCombo: ComboBox {
-        id: scrollCombo
-
-        popup: Popup {
-            y: scrollCombo.height
-            width: scrollCombo.width
-            implicitHeight: Math.min(scrollCombo.contentItem.implicitHeight + 2, 360)
-            padding: 1
-
-            contentItem: ListView {
-                clip: true
-                implicitHeight: contentHeight
-                model: scrollCombo.delegateModel
-                currentIndex: scrollCombo.highlightedIndex
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar {
-                    policy: ScrollBar.AlwaysOn
-                    width: 12
-                    minimumSize: 0.08
-                }
-            }
-
-            background: Rectangle {
-                radius: 6
-                color: Theme.currentTheme.colors.backgroundAcrylicColor
-                border.width: Theme.currentTheme.appearance.borderWidth
-                border.color: Theme.currentTheme.colors.windowBorderColor
-            }
-        }
-    }
     title: "自动化"
 
     extraHeaderItems: Button {
@@ -169,7 +131,7 @@ PluginPage {
     readonly property real gridWidth: Math.min(page.width - (page.horizontalPadding || 56) * 2,
                                                page.wrapperWidth || 1000)
     readonly property real cardWidth: Math.max(200, Math.min(280, (gridWidth - 14) / 2))
-    readonly property int cardHeight: 104
+    readonly property int cardHeight: 120
 
     // ── 编辑草稿（点卡片打开上浮编辑页，取消即丢弃）─────────
     property bool editing: false
@@ -662,7 +624,7 @@ PluginPage {
                 var i = page.weekValues.indexOf(item.p1 || "")
                 weekCombo.currentIndex = Math.max(0, i)
             }
-            ScrollCombo {
+            ComboBox {
                 id: weekCombo
                 Layout.fillWidth: true
                 model: page.weekLabels
@@ -701,7 +663,7 @@ PluginPage {
                 var i = page.subjects.indexOf(item.p1 || "")
                 subCombo.currentIndex = Math.max(0, i)
             }
-            ScrollCombo {
+            ComboBox {
                 id: subCombo
                 Layout.fillWidth: true
                 model: page.subjects
@@ -721,7 +683,7 @@ PluginPage {
                 var i = page.statusValues.indexOf(item.p1 || "")
                 stCombo.currentIndex = Math.max(0, i)
             }
-            ScrollCombo {
+            ComboBox {
                 id: stCombo
                 Layout.fillWidth: true
                 model: page.statusLabels
@@ -749,13 +711,13 @@ PluginPage {
                 placeholderText: "窗口进程名或标题"
                 onTextEdited: if (it) it.p1 = text
             }
-            ScrollCombo {
+            ComboBox {
                 id: matchCombo
                 Layout.preferredWidth: 90
                 model: page.matchLabels
                 onActivated: if (it) it.p2 = page.matchValues[index]
             }
-            ScrollCombo {
+            ComboBox {
                 id: winCombo
                 Layout.preferredWidth: 110
                 model: page.winStateLabels
@@ -799,7 +761,7 @@ PluginPage {
                 var i = page.teachers.indexOf(item.p1 || "")
                 teaCombo.currentIndex = Math.max(0, i)
             }
-            ScrollCombo {
+            ComboBox {
                 id: teaCombo
                 Layout.fillWidth: true
                 model: page.teachers
@@ -863,7 +825,7 @@ PluginPage {
                 onValueChanged: if (!loading && it) it.p3 = String(Math.round(value * 1000))
             }
             Text { text: "秒" }
-            ScrollCombo {
+            ComboBox {
                 id: lvlCombo
                 Layout.preferredWidth: 130
                 model: page.levelLabels
@@ -967,7 +929,7 @@ PluginPage {
                 loading = false
             }
 
-            ScrollCombo {
+            ComboBox {
                 id: keyCombo
                 Layout.preferredWidth: 140
                 model: page.keyLabels
@@ -983,42 +945,42 @@ PluginPage {
                 text: "开"
                 onToggled: if (!loading && it) it.p2 = checked ? "true" : "false"
             }
-            ScrollCombo {
+            ComboBox {
                 id: themeCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "theme"
                 model: page.themeNames
                 onActivated: if (!loading && it) it.p2 = page.themeIds[index]
             }
-            ScrollCombo {
+            ComboBox {
                 id: anchorCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "anchor"
                 model: page.anchorLabels
                 onActivated: if (!loading && it) it.p2 = page.anchorValues[index]
             }
-            ScrollCombo {
+            ComboBox {
                 id: layerCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "layer"
                 model: page.layerLabels
                 onActivated: if (!loading && it) it.p2 = page.layerValues[index]
             }
-            ScrollCombo {
+            ComboBox {
                 id: precCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "precision"
                 model: page.precisionLabels
                 onActivated: if (!loading && it) it.p2 = page.precisionValues[index]
             }
-            ScrollCombo {
+            ComboBox {
                 id: tapCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "tap"
                 model: page.tapLabels
                 onActivated: if (!loading && it) it.p2 = page.tapValues[index]
             }
-            ScrollCombo {
+            ComboBox {
                 id: presetCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "preset"
@@ -1062,13 +1024,13 @@ PluginPage {
                 var li = page.lockValues.indexOf(item.p2 || "lock")
                 lockCombo.currentIndex = Math.max(0, li)
             }
-            ScrollCombo {
+            ComboBox {
                 id: keyCombo
                 Layout.fillWidth: true
                 model: page.keyLabels
                 onActivated: if (it) it.p1 = page.configKeys[index].key
             }
-            ScrollCombo {
+            ComboBox {
                 id: lockCombo
                 Layout.preferredWidth: 100
                 model: page.lockLabels
@@ -1097,7 +1059,7 @@ PluginPage {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
-                ScrollCombo {
+                ComboBox {
                     id: appCombo
                     Layout.fillWidth: true
                     model: page.appLabels
@@ -1305,8 +1267,9 @@ PluginPage {
         // 于是「面板高度 ↔ 父项高度」互相依赖，滚动位置被反复重算：
         // 现象就是快速下滑时闪一下又弹回去、最后一张卡永远够不到。
         width: parent.width
-        // 上限 620：全屏时也不铺满，保持「从下方升起的浮动卡片」手感。
-        height: Math.max(320, Math.min(page.Window && page.Window.height ? page.Window.height - 140 : 640, 620))
+        // 刻意比窗口高出一截：无论窗口化还是全屏，面板底部都落在窗口之外，
+        // 保持「从下方升起、下面还压着一点」的观感（窗口化时的默认观感就是这样）。
+        height: (page.Window && page.Window.height ? page.Window.height : 640) + 160
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
@@ -1522,7 +1485,7 @@ PluginPage {
                                                 // 那次延后的版本号变更（onVerChanged）驱动，
                                                 // 保证发生在 delegate 建好之后。
 
-                                                ScrollCombo {
+                                                ComboBox {
                                                     id: trigType
                                                     Layout.preferredWidth: 170
                                                     model: page.trigLabels
@@ -1574,7 +1537,7 @@ PluginPage {
                                                 text: "启用规则集"
                                                 onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.enabled = checked }
                                             }
-                                            ScrollCombo {
+                                            ComboBox {
                                                 id: rsMode
                                                 Layout.preferredWidth: 120
                                                 model: ["全部满足", "任一满足"]
@@ -1613,7 +1576,7 @@ PluginPage {
                                                 // 那次延后的版本号变更（onVerChanged）驱动，
                                                 // 保证发生在 delegate 建好之后。
 
-                                                ScrollCombo {
+                                                ComboBox {
                                                     id: ruleType
                                                     Layout.preferredWidth: 170
                                                     model: page.ruleLabels
@@ -1690,7 +1653,7 @@ PluginPage {
                                                 // 那次延后的版本号变更（onVerChanged）驱动，
                                                 // 保证发生在 delegate 建好之后。
 
-                                                ScrollCombo {
+                                                ComboBox {
                                                     id: actType
                                                     Layout.preferredWidth: 170
                                                     model: page.actLabels
