@@ -1110,13 +1110,28 @@ PluginPage {
         width: parent.width
         spacing: 12
 
-        SettingCard {
+        Frame {
             Layout.fillWidth: true
-            title: "自动化"
-            description: "触发器触发 → 规则集过滤 → 依次执行行动；开启「恢复」后，逆事件（如下课）或规则集不再满足时会自动还原被修改的配置。点任意卡片从下方拉出编辑页，或点「＋」新建。"
-            RowLayout {
-                spacing: 8
-                Button { text: "刷新"; onClicked: Qt.callLater(page.reload) }
+            radius: page.cardRadius
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 12
+
+                Text {
+                    typography: Typography.BodyStrong
+                    text: "自动化"
+                }
+                Text {
+                    text: "触发器触发 → 规则集过滤 → 依次执行行动；开启「恢复」后，逆事件（如下课）或规则集不再满足时会自动还原被修改的配置。点任意卡片从下方拉出编辑页，或点「＋」新建。"
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+
+                    RowLayout {
+                        spacing: 8
+                        Button { text: "刷新"; onClicked: Qt.callLater(page.reload) }
+                    }
             }
         }
 
@@ -1248,17 +1263,41 @@ PluginPage {
         // 且崩溃偏移每次都相同的现场。改成本页内的普通 Item，彻底不进那套机制。
         id: editorDialog
         anchors.fill: parent
-        visible: page.editing
         z: 1000
+
+        // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
+        // 所以关掉之后再保留可见 260ms。
+        property bool closing: false
+        visible: page.editing || closing
+
+        Connections {
+            target: page
+            function onEditingChanged() {
+                if (page.editing) {
+                    editorDialog.closing = false
+                } else {
+                    editorDialog.closing = true
+                    closeHold.restart()
+                }
+            }
+        }
+
+        Timer {
+            id: closeHold
+            interval: 260
+            onTriggered: editorDialog.closing = false
+        }
 
         // 保持原有调用方式，openEditor / addRule 一行都不用改
         function open() { page.editing = true }
         function close() { page.editing = false }
 
-        // 遮罩（原来由 Popup 自带的背景承担）
+        // 遮罩：淡入淡出（原来由 Popup 自带的背景承担）
         Rectangle {
             anchors.fill: parent
             color: "#66000000"
+            opacity: page.editing ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 200 } }
         }
 
         Rectangle {
@@ -1330,235 +1369,306 @@ PluginPage {
                         width: sheet.width - 44 - 14
                         spacing: 12
 
-                        SettingCard {
+                        Frame {
                             Layout.fillWidth: true
-                            title: "基础设置"
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                Text { text: "名称"; Layout.preferredWidth: 36 }
-                                TextField {
-                                    id: nameField
-                                    Layout.preferredWidth: 220
-                                    placeholderText: "自动化名称"
-                                    onTextEdited: page.commit("name", text)
+                            radius: page.cardRadius
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 12
+
+                                Text {
+                                    typography: Typography.BodyStrong
+                                    text: "基础设置"
                                 }
-                                Text { text: "描述"; Layout.preferredWidth: 36 }
-                                TextField {
-                                    id: descField
-                                    Layout.preferredWidth: 300
-                                    placeholderText: "显示在卡片上的说明（可空）"
-                                    onTextEdited: page.commit("description", text)
-                                }
-                                Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
-                                Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Text { text: "名称"; Layout.preferredWidth: 36 }
+                                        TextField {
+                                            id: nameField
+                                            Layout.preferredWidth: 220
+                                            placeholderText: "自动化名称"
+                                            onTextEdited: page.commit("name", text)
+                                        }
+                                        Text { text: "描述"; Layout.preferredWidth: 36 }
+                                        TextField {
+                                            id: descField
+                                            Layout.preferredWidth: 300
+                                            placeholderText: "显示在卡片上的说明（可空）"
+                                            onTextEdited: page.commit("description", text)
+                                        }
+                                        Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
+                                        Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
+                                    }
                             }
                         }
 
-                    SettingCard {
-                            Layout.fillWidth: true
-                            title: "触发器（任一触发即可）"
-                            description: "定时、间隔、上课/下课/课间/放学/状态变化、上课前、应用启动、收到信号。"
-                            ColumnLayout {
+                    Frame {
+                        Layout.fillWidth: true
+                        radius: page.cardRadius
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 12
+
+                            Text {
+                                typography: Typography.BodyStrong
+                                text: "触发器（任一触发即可）"
+                            }
+                            Text {
+                                text: "定时、间隔、上课/下课/课间/放学/状态变化、上课前、应用启动、收到信号。"
+                                wrapMode: Text.Wrap
                                 Layout.fillWidth: true
-                                spacing: 6
-                                Repeater {
-                                    model: page.trigCount
-                                    delegate: RowLayout {
-                                        id: trigRow
+                            }
+
+                                    ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 6
-                                        property int idx: index
-                                        property int ver: page.trigVersion
-                                        property var obj: null
-                                        onVerChanged: initRow()
+                                        Repeater {
+                                            model: page.trigCount
+                                            delegate: RowLayout {
+                                                id: trigRow
+                                                Layout.fillWidth: true
+                                                spacing: 6
+                                                property int idx: index
+                                                property int ver: page.trigVersion
+                                                property var obj: null
+                                                onVerChanged: initRow()
 
-                                        function arr() { var r = page.cur(); return r ? (r.triggers || []) : [] }
-                                        function initRow() {
-                                            var a = arr()
-                                            if (idx >= a.length) { obj = null; return }
-                                            obj = a[idx]
-                                            trigType.currentIndex = Math.max(0, page.trigTypes.indexOf(obj.type || ""))
-                                            refreshFields()
-                                        }
-                                        function refreshFields() {
-                                            if (obj && trigFld.item && trigFld.item.load) trigFld.item.load(obj)
-                                        }
-                                        // 刻意不在构造期 initRow()：初始化统一由上面
-                                        // 那次延后的版本号变更（onVerChanged）驱动，
-                                        // 保证发生在 delegate 建好之后。
+                                                function arr() { var r = page.cur(); return r ? (r.triggers || []) : [] }
+                                                function initRow() {
+                                                    var a = arr()
+                                                    if (idx >= a.length) { obj = null; return }
+                                                    obj = a[idx]
+                                                    trigType.currentIndex = Math.max(0, page.trigTypes.indexOf(obj.type || ""))
+                                                    refreshFields()
+                                                }
+                                                function refreshFields() {
+                                                    if (obj && trigFld.item && trigFld.item.load) trigFld.item.load(obj)
+                                                }
+                                                // 刻意不在构造期 initRow()：初始化统一由上面
+                                                // 那次延后的版本号变更（onVerChanged）驱动，
+                                                // 保证发生在 delegate 建好之后。
 
-                                        ComboBox {
-                                            id: trigType
-                                            Layout.preferredWidth: 170
-                                            model: page.trigLabels
-                                            onActivated: {
-                                                var r = page.cur(); if (!r || !r.triggers) return
-                                                r.triggers[trigRow.idx] = {"type": page.trigTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
-                                                trigRow.obj = r.triggers[trigRow.idx]
+                                                ComboBox {
+                                                    id: trigType
+                                                    Layout.preferredWidth: 170
+                                                    model: page.trigLabels
+                                                    onActivated: {
+                                                        var r = page.cur(); if (!r || !r.triggers) return
+                                                        r.triggers[trigRow.idx] = {"type": page.trigTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
+                                                        trigRow.obj = r.triggers[trigRow.idx]
+                                                    }
+                                                }
+                                                Loader {
+                                                    id: trigFld
+                                                    Layout.fillWidth: true
+                                                    sourceComponent: page.trigFieldComp(trigRow.obj ? trigRow.obj.type : "")
+                                                    onLoaded: trigRow.refreshFields()
+                                                }
+                                                Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeTrigger(trigRow.idx) }
                                             }
                                         }
-                                        Loader {
-                                            id: trigFld
-                                            Layout.fillWidth: true
-                                            sourceComponent: page.trigFieldComp(trigRow.obj ? trigRow.obj.type : "")
-                                            onLoaded: trigRow.refreshFields()
-                                        }
-                                        Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeTrigger(trigRow.idx) }
+                                        Button { text: "+ 添加触发器"; onClicked: page.addTrigger() }
                                     }
-                                }
-                                Button { text: "+ 添加触发器"; onClicked: page.addTrigger() }
-                            }
                         }
+                    }
 
-                    SettingCard {
-                            Layout.fillWidth: true
-                            title: "规则集（条件，满足才执行）"
-                            description: "规则集关闭时无条件执行；开启后按下方规则过滤。"
-                            ColumnLayout {
+                    Frame {
+                        Layout.fillWidth: true
+                        radius: page.cardRadius
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 12
+
+                            Text {
+                                typography: Typography.BodyStrong
+                                text: "规则集（条件，满足才执行）"
+                            }
+                            Text {
+                                text: "规则集关闭时无条件执行；开启后按下方规则过滤。"
+                                wrapMode: Text.Wrap
                                 Layout.fillWidth: true
-                                spacing: 6
-                                RowLayout {
-                                    spacing: 8
-                                    Switch {
-                                        id: rsEnabled
-                                        text: "启用规则集"
-                                        onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.enabled = checked }
-                                    }
-                                    ComboBox {
-                                        id: rsMode
-                                        Layout.preferredWidth: 120
-                                        model: ["全部满足", "任一满足"]
-                                        onActivated: { var r = page.cur(); if (r && r.ruleset) r.ruleset.mode = (index === 1 ? "any" : "all") }
-                                    }
-                                    Switch {
-                                        id: rsReversed
-                                        text: "取反"
-                                        onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.reversed = checked }
-                                    }
-                                }
-                                Repeater {
-                                    model: page.ruleCount
-                                    delegate: RowLayout {
-                                        id: ruleRow
+                            }
+
+                                    ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 6
-                                        property int idx: index
-                                        property int ver: page.ruleVersion
-                                        property var obj: null
-                                        onVerChanged: initRow()
-
-                                        function arr() { var r = page.cur(); return (r && r.ruleset) ? (r.ruleset.rules || []) : [] }
-                                        function initRow() {
-                                            var a = arr()
-                                            if (idx >= a.length) { obj = null; return }
-                                            obj = a[idx]
-                                            ruleType.currentIndex = Math.max(0, page.ruleTypes.indexOf(obj.type || ""))
-                                            revSw.checked = !!obj.reversed
-                                            refreshFields()
-                                        }
-                                        function refreshFields() {
-                                            if (obj && ruleFld.item && ruleFld.item.load) ruleFld.item.load(obj)
-                                        }
-                                        // 刻意不在构造期 initRow()：初始化统一由上面
-                                        // 那次延后的版本号变更（onVerChanged）驱动，
-                                        // 保证发生在 delegate 建好之后。
-
-                                        ComboBox {
-                                            id: ruleType
-                                            Layout.preferredWidth: 170
-                                            model: page.ruleLabels
-                                            onActivated: {
-                                                var r = page.cur(); if (!r || !r.ruleset || !r.ruleset.rules) return
-                                                r.ruleset.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
-                                                ruleRow.obj = r.ruleset.rules[ruleRow.idx]
-                                                revSw.checked = false
+                                        RowLayout {
+                                            spacing: 8
+                                            Switch {
+                                                id: rsEnabled
+                                                text: "启用规则集"
+                                                onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.enabled = checked }
+                                            }
+                                            ComboBox {
+                                                id: rsMode
+                                                Layout.preferredWidth: 120
+                                                model: ["全部满足", "任一满足"]
+                                                onActivated: { var r = page.cur(); if (r && r.ruleset) r.ruleset.mode = (index === 1 ? "any" : "all") }
+                                            }
+                                            Switch {
+                                                id: rsReversed
+                                                text: "取反"
+                                                onToggled: { var r = page.cur(); if (r && r.ruleset) r.ruleset.reversed = checked }
                                             }
                                         }
-                                        Loader {
-                                            id: ruleFld
-                                            Layout.fillWidth: true
-                                            sourceComponent: page.ruleFieldComp(ruleRow.obj ? ruleRow.obj.type : "")
-                                            onLoaded: ruleRow.refreshFields()
-                                        }
-                                        Switch {
-                                            id: revSw
-                                            text: "取反"
-                                            onToggled: if (obj) obj.reversed = checked
-                                        }
-                                        Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeRuleItem(ruleRow.idx) }
-                                    }
-                                }
-                                Button { text: "+ 添加规则"; onClicked: page.addRuleItem() }
-                            }
-                        }
+                                        Repeater {
+                                            model: page.ruleCount
+                                            delegate: RowLayout {
+                                                id: ruleRow
+                                                Layout.fillWidth: true
+                                                spacing: 6
+                                                property int idx: index
+                                                property int ver: page.ruleVersion
+                                                property var obj: null
+                                                onVerChanged: initRow()
 
-                    SettingCard {
-                            Layout.fillWidth: true
-                            title: "行动（顺序执行，可排序）"
-                            description: "运行命令、显示提醒、打开应用、等待、广播信号、设标志、设置配置项、锁定配置项、重启主程序。"
-                            ColumnLayout {
+                                                function arr() { var r = page.cur(); return (r && r.ruleset) ? (r.ruleset.rules || []) : [] }
+                                                function initRow() {
+                                                    var a = arr()
+                                                    if (idx >= a.length) { obj = null; return }
+                                                    obj = a[idx]
+                                                    ruleType.currentIndex = Math.max(0, page.ruleTypes.indexOf(obj.type || ""))
+                                                    revSw.checked = !!obj.reversed
+                                                    refreshFields()
+                                                }
+                                                function refreshFields() {
+                                                    if (obj && ruleFld.item && ruleFld.item.load) ruleFld.item.load(obj)
+                                                }
+                                                // 刻意不在构造期 initRow()：初始化统一由上面
+                                                // 那次延后的版本号变更（onVerChanged）驱动，
+                                                // 保证发生在 delegate 建好之后。
+
+                                                ComboBox {
+                                                    id: ruleType
+                                                    Layout.preferredWidth: 170
+                                                    model: page.ruleLabels
+                                                    onActivated: {
+                                                        var r = page.cur(); if (!r || !r.ruleset || !r.ruleset.rules) return
+                                                        r.ruleset.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
+                                                        ruleRow.obj = r.ruleset.rules[ruleRow.idx]
+                                                        revSw.checked = false
+                                                    }
+                                                }
+                                                Loader {
+                                                    id: ruleFld
+                                                    Layout.fillWidth: true
+                                                    sourceComponent: page.ruleFieldComp(ruleRow.obj ? ruleRow.obj.type : "")
+                                                    onLoaded: ruleRow.refreshFields()
+                                                }
+                                                Switch {
+                                                    id: revSw
+                                                    text: "取反"
+                                                    onToggled: if (obj) obj.reversed = checked
+                                                }
+                                                Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeRuleItem(ruleRow.idx) }
+                                            }
+                                        }
+                                        Button { text: "+ 添加规则"; onClicked: page.addRuleItem() }
+                                    }
+                        }
+                    }
+
+                    Frame {
+                        Layout.fillWidth: true
+                        radius: page.cardRadius
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 12
+
+                            Text {
+                                typography: Typography.BodyStrong
+                                text: "行动（顺序执行，可排序）"
+                            }
+                            Text {
+                                text: "运行命令、显示提醒、打开应用、等待、广播信号、设标志、设置配置项、锁定配置项、重启主程序。"
+                                wrapMode: Text.Wrap
                                 Layout.fillWidth: true
-                                spacing: 6
-                                Repeater {
-                                    model: page.actCount
-                                    delegate: RowLayout {
-                                        id: actRow
+                            }
+
+                                    ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 6
-                                        property int idx: index
-                                        property int ver: page.actVersion
-                                        property var obj: null
-                                        onVerChanged: initRow()
+                                        Repeater {
+                                            model: page.actCount
+                                            delegate: RowLayout {
+                                                id: actRow
+                                                Layout.fillWidth: true
+                                                spacing: 6
+                                                property int idx: index
+                                                property int ver: page.actVersion
+                                                property var obj: null
+                                                onVerChanged: initRow()
 
-                                        function arr() { var r = page.cur(); return r ? (r.actions || []) : [] }
-                                        function initRow() {
-                                            var a = arr()
-                                            if (idx >= a.length) { obj = null; return }
-                                            obj = a[idx]
-                                            actType.currentIndex = Math.max(0, page.actTypes.indexOf(obj.type || ""))
-                                            refreshFields()
-                                        }
-                                        function refreshFields() {
-                                            if (obj && actFld.item && actFld.item.load) actFld.item.load(obj)
-                                        }
-                                        // 刻意不在构造期 initRow()：初始化统一由上面
-                                        // 那次延后的版本号变更（onVerChanged）驱动，
-                                        // 保证发生在 delegate 建好之后。
+                                                function arr() { var r = page.cur(); return r ? (r.actions || []) : [] }
+                                                function initRow() {
+                                                    var a = arr()
+                                                    if (idx >= a.length) { obj = null; return }
+                                                    obj = a[idx]
+                                                    actType.currentIndex = Math.max(0, page.actTypes.indexOf(obj.type || ""))
+                                                    refreshFields()
+                                                }
+                                                function refreshFields() {
+                                                    if (obj && actFld.item && actFld.item.load) actFld.item.load(obj)
+                                                }
+                                                // 刻意不在构造期 initRow()：初始化统一由上面
+                                                // 那次延后的版本号变更（onVerChanged）驱动，
+                                                // 保证发生在 delegate 建好之后。
 
-                                        ComboBox {
-                                            id: actType
-                                            Layout.preferredWidth: 170
-                                            model: page.actLabels
-                                            onActivated: {
-                                                var r = page.cur(); if (!r || !r.actions) return
-                                                r.actions[actRow.idx] = {"type": page.actTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
-                                                actRow.obj = r.actions[actRow.idx]
+                                                ComboBox {
+                                                    id: actType
+                                                    Layout.preferredWidth: 170
+                                                    model: page.actLabels
+                                                    onActivated: {
+                                                        var r = page.cur(); if (!r || !r.actions) return
+                                                        r.actions[actRow.idx] = {"type": page.actTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
+                                                        actRow.obj = r.actions[actRow.idx]
+                                                    }
+                                                }
+                                                Loader {
+                                                    id: actFld
+                                                    Layout.fillWidth: true
+                                                    sourceComponent: page.actFieldComp(actRow.obj ? actRow.obj.type : "")
+                                                    onLoaded: actRow.refreshFields()
+                                                }
+                                                Button { text: "↑"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, -1) }
+                                                Button { text: "↓"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, 1) }
+                                                Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeAction(actRow.idx) }
                                             }
                                         }
-                                        Loader {
-                                            id: actFld
-                                            Layout.fillWidth: true
-                                            sourceComponent: page.actFieldComp(actRow.obj ? actRow.obj.type : "")
-                                            onLoaded: actRow.refreshFields()
-                                        }
-                                        Button { text: "↑"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, -1) }
-                                        Button { text: "↓"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, 1) }
-                                        Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeAction(actRow.idx) }
+                                        Button { text: "+ 添加行动"; onClicked: page.addAction() }
                                     }
-                                }
-                                Button { text: "+ 添加行动"; onClicked: page.addAction() }
-                            }
                         }
+                    }
 
-                        SettingCard {
+                        Frame {
                             Layout.fillWidth: true
-                            title: "保存与测试"
-                            description: "「保存」写回配置并立即生效；「测试执行」会先保存，再忽略触发器与规则集，立即执行一次当前行动。"
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                Button { text: "测试执行"; onClicked: page.testDraft() }
+                            radius: page.cardRadius
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 12
+
+                                Text {
+                                    typography: Typography.BodyStrong
+                                    text: "保存与测试"
+                                }
+                                Text {
+                                    text: "「保存」写回配置并立即生效；「测试执行」会先保存，再忽略触发器与规则集，立即执行一次当前行动。"
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Button { text: "测试执行"; onClicked: page.testDraft() }
+                                    }
                             }
                         }
                     }
