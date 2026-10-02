@@ -1262,7 +1262,12 @@ PluginPage {
         // 等于「一边被搬进 overlay、一边读 overlay」。实测这就是一点击就崩、
         // 且崩溃偏移每次都相同的现场。改成本页内的普通 Item，彻底不进那套机制。
         id: editorDialog
-        anchors.fill: parent
+        // 宽度跟 parent（横向不会造成循环），高度只跟窗口走。
+        // 之前 height 用了 parent.height，而宿主内容区的高度又由子项撑开，
+        // 于是「面板高度 ↔ 父项高度」互相依赖，滚动位置被反复重算：
+        // 现象就是快速下滑时闪一下又弹回去、最后一张卡永远够不到。
+        width: parent.width
+        height: Math.max(320, (page.Window && page.Window.height ? page.Window.height - 140 : 640))
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
@@ -1356,6 +1361,32 @@ PluginPage {
                     Item { Layout.fillWidth: true }
                     Button { text: "取消"; onClicked: page.closeEditor(false) }
                     Button { text: "保存"; highlighted: true; onClicked: page.closeEditor(true) }
+                }
+
+                Frame {
+                    Layout.fillWidth: true
+                    radius: page.cardRadius
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 12
+
+                        Text {
+                            typography: Typography.BodyStrong
+                            text: "保存与测试"
+                        }
+                        Text {
+                            text: "「保存」写回配置并立即生效；「测试执行」会先保存，再忽略触发器与规则集，立即执行一次当前行动。"
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Button { text: "测试执行"; onClicked: page.testDraft() }
+                            }
+                    }
                 }
 
                 ScrollView {
@@ -1646,31 +1677,6 @@ PluginPage {
                         }
                     }
 
-                        Frame {
-                            Layout.fillWidth: true
-                            radius: page.cardRadius
-
-                            ColumnLayout {
-                                anchors.fill: parent
-                                spacing: 12
-
-                                Text {
-                                    typography: Typography.BodyStrong
-                                    text: "保存与测试"
-                                }
-                                Text {
-                                    text: "「保存」写回配置并立即生效；「测试执行」会先保存，再忽略触发器与规则集，立即执行一次当前行动。"
-                                    wrapMode: Text.Wrap
-                                    Layout.fillWidth: true
-                                }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 8
-                                        Button { text: "测试执行"; onClicked: page.testDraft() }
-                                    }
-                            }
-                        }
                     }
                 }
 
