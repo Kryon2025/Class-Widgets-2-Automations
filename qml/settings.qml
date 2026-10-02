@@ -137,6 +137,8 @@ PluginPage {
     // （用计数器而不是直接监听值，避免连续选同一个值时不再触发）
     property bool appPicking: false
     property var appPickValue: ""
+    // 谁发起的挑选：弹窗结果只回填这一行，避免多行一起被改写
+    property var appPickOwner: null
     property int appPickNonce: 0
 
     // 多个规则集（rulesets）：rsCount 是外层行数，rsVersion 变更时各规则集重算自己的行数
@@ -1208,6 +1210,14 @@ PluginPage {
                     onTextEdited: if (it) it.p1 = text
                 }
                 Button {
+                    text: "从列表选择…"
+                    onClicked: {
+                        page.appPickValue = exeF.text
+                        page.appPickOwner = it
+                        page.appPicking = true
+                    }
+                }
+                Button {
                     text: "选择程序…"
                     onClicked: {
                         var p = backend ? backend.pickExeFile() : ""
@@ -1217,8 +1227,16 @@ PluginPage {
                     }
                 }
             }
+            Connections {
+                target: page
+                function onAppPickNonceChanged() {
+                    if (!page.appPickValue || !it || page.appPickOwner !== it) return
+                    exeF.text = page.appPickValue
+                    it.p1 = page.appPickValue
+                }
+            }
             Text {
-                text: "按进程名强制结束（taskkill /F）。UWP / 商店应用没有独立 exe，关不掉。"
+                text: "按进程名强制结束（taskkill /F）。UWP / 商店应用没有独立进程名，关不掉。"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
@@ -1261,6 +1279,7 @@ PluginPage {
                     text: "从列表选择…"
                     onClicked: {
                         page.appPickValue = manualF.text
+                        page.appPickOwner = it
                         page.appPicking = true
                     }
                 }
@@ -1277,7 +1296,7 @@ PluginPage {
                 Connections {
                     target: page
                     function onAppPickNonceChanged() {
-                        if (!page.appPickValue || !it) return
+                        if (!page.appPickValue || !it || page.appPickOwner !== it) return
                         it.p1 = page.appPickValue
                         load(it)                     // 整行回填：下拉 + 程序框 + 参数 + 目录
                         var v = String(page.appPickValue)

@@ -304,7 +304,7 @@ class RuleEngine(QObject):
 
     def on_status_changed(self, status: str) -> None:
         host = status or ""
-        # 放学后由插件自己按「课程/课间空档 > 1 小时」判定，其余状态沿用主程序
+        # 状态一律以主程序为准（free = 空闲，即「放学后」）；主程序没给状态时才按课表推算
         now = self._effective_status(host)
         prev = self._prev_status
         self._prev_status = now
@@ -411,7 +411,12 @@ class RuleEngine(QObject):
         target = str(a.get("p1") or "").strip()
         if not target:
             return
-        name = target.replace("/", "\\").rsplit("\\", 1)[-1]
+        if target.lower().startswith("shell:"):
+            logger.warning("[automations] 关闭应用：{} 是 UWP/商店应用，没有独立进程名，关不掉", target)
+            return
+        name = target.replace("/", "\\").rsplit("\\", 1)[-1].strip()
+        if name.lower().endswith(".lnk"):
+            name = name[:-4]                      # 开始菜单快捷方式：拿它的名字当进程名
         if not name.lower().endswith(".exe"):
             name += ".exe"
         try:
@@ -782,7 +787,7 @@ class RuleEngine(QObject):
     # ── 工具 ────────────────────────────────────────────────
 
     def _safe_status(self) -> str:
-        """当前时间状态：主程序状态 + 插件自己的放学判定。"""
+        """当前时间状态：以主程序为准（拿不到时才按课表推算）。"""
         try:
             host = self._api.runtime.current_status or day_status.HOST_FREE
         except Exception:
@@ -803,7 +808,7 @@ class RuleEngine(QObject):
         return [e for e in entries if isinstance(e, dict)]
 
     def _effective_status(self, host_status: str) -> str:
-        """把主程序状态换成插件视角下的状态（含放学后判定）。"""
+        """把主程序状态换算成插件视角的状态（默认原样沿用主程序）。"""
         try:
             return day_status.effective_status(
                 host_status, self._day_entries(), self._now_minutes())

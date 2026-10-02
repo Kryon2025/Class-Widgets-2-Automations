@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
-"""时间状态判定 —— 插件自己的「放学后」判断（不改主程序的状态）。
+"""时间状态判定 —— 以主程序状态为准，拿不到时才自己按课表算。
 
-规则（用户约定）：
-1. 一天里相邻的「课程/课间」之间的空档超过 1 小时 → 空档内算放学后；
-2. 当天一条课程/课间都没有 → 一整天都算放学后；
-3. 参与判定的条目类型只有 class（课程）与 break（课间）；
-   活动 activity / 预备 preparation / 空闲 free 不参与，
-   所以它们夹着的长空档不会被误判成放学。
+约定：
+1. 主程序报什么状态就用什么状态（free = 空闲，界面里显示为「放学后」）。
+   主程序对放学的判定就是「课表走到没有日程了」，它发自由活动时间之类的
+   通知用的也是这个状态，插件跟着它走才不会两边打架。
+2. 主程序状态为空（拿不到）时，才退回按课表推算：
+   - 相邻「课程/课间」之间的空档超过 1 小时 → 空档内算放学后；
+   - 当天一条课程/课间都没有 → 一整天都算放学后；
+   - 第一节课之前不算放学（按课间算）。
+   参与推算的条目只有 class（课程）与 break（课间）；
+   活动 activity / 预备 preparation / 空闲 free 不参与。
 
 这个模块不依赖 PySide6，可以直接单测。
 """
@@ -80,11 +84,10 @@ def is_after_school(entries, now_minutes: int) -> bool:
 def effective_status(host_status, entries, now_minutes: int) -> str:
     """插件视角下的时间状态。
 
-    非空闲一律沿用主程序的说法；主程序说空闲时再用「长空档」确认：
-    确实是放学后就是 free，只是普通空档则算 break（课间）。
-    这样「当前时间状态是 放学后」这类规则不会在课间空当里误触发。
+    主程序说了算：它报什么就返回什么（free = 空闲 = 界面里的「放学后」）。
+    主程序的状态为空时，才退回按课表空档判断。
     """
-    status = str(host_status or HOST_FREE)
-    if status != HOST_FREE:
+    status = str(host_status or "").strip()
+    if status:
         return status
     return HOST_FREE if is_after_school(entries, now_minutes) else "break"
