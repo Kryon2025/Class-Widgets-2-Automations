@@ -1298,11 +1298,14 @@ PluginPage {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        // 两个要求同时满足：
-        //   · 面板本身比可视区高 90px → 底边探出屏幕，Sheet 的底边永远看不见（想要的观感）
-        //   · Sheet 内容区加 112 下边距（见下面 ColumnLayout）→ 内容仍在屏幕内，
-        //     内部 ScrollView 完整可见，触发器/规则集/行动都能滚到
-        height: Math.max(320, (page.Window && page.Window.height ? page.Window.height : 640) - 140) + 90
+        // 三条要求同时满足，靠两个互相独立的数字（不要再用一个高度去兼顾）：
+        //   · 面板高度 = 窗口高 + 120  → 无论窗口化、全屏、还是任意窗口尺寸，
+        //     面板底边都在窗口之外，Sheet 的底边永远看不见（想要的观感）
+        //   · 内容区下边距 = 22 + 120 + 140（见下面 ColumnLayout）
+        //     → 内容绕开「探出的 120 + 设置页顶栏余量 140」，底边始终留在屏幕内，
+        //       内部 ScrollView 完整可见，触发器 / 规则集 / 行动都能滚到
+        // 注：140 是给主程序设置页顶栏/标签栏留的余量；换主题导致顶栏变高时才需要动它。
+        height: (page.Window && page.Window.height ? page.Window.height : 640) + 120
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
@@ -1366,9 +1369,9 @@ PluginPage {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 22
-                // 下边距多留 90：那 90px 正是面板探出屏幕的部分，
-                // 内容绕开它，于是「面板探出」与「内容全在一屏内」同时成立。
-                anchors.bottomMargin: 112
+                // 下边距 = 22 + 120（面板探出部分）+ 140（设置页顶栏余量）：
+                // 内容绕开这两段，于是「面板探出屏幕」与「内容全在一屏内」同时成立。
+                anchors.bottomMargin: 282
                 spacing: 12
 
                 RowLayout {
