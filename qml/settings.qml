@@ -133,6 +133,17 @@ PluginPage {
     readonly property real cardWidth: Math.max(200, Math.min(280, (gridWidth - 14) / 2))
     readonly property int cardHeight: 120
 
+    // 应用挑选弹窗：appPicking 控制显隐，appPickNonce 用于通知编辑器接收结果
+    // （用计数器而不是直接监听值，避免连续选同一个值时不再触发）
+    property bool appPicking: false
+    property var appPickValue: ""
+    property int appPickNonce: 0
+
+    function acceptAppPick() {
+        appPickNonce++
+        appPicking = false
+    }
+
     // ── 编辑草稿（点卡片打开上浮编辑页，取消即丢弃）─────────
     property bool editing: false
     property var draft: null
@@ -1070,6 +1081,13 @@ PluginPage {
                         if (it) it.p1 = t
                     }
                 }
+                Button {
+                    text: "从列表选择…"
+                    onClicked: {
+                        page.appPickValue = manualF.text
+                        page.appPicking = true
+                    }
+                }
                 Button { text: "刷新列表"; onClicked: page.ensureApps(true) }
             }
             RowLayout {
@@ -1080,6 +1098,14 @@ PluginPage {
                     Layout.fillWidth: true
                     placeholderText: "应用路径 / 网址 / shell:AppsFolder\\…（上面下拉选，或在这里手输）"
                     onTextEdited: if (it) it.p1 = text
+                }
+                Connections {
+                    target: page
+                    function onAppPickNonceChanged() {
+                        if (!page.appPickValue) return
+                        manualF.text = page.appPickValue
+                        if (it) it.p1 = page.appPickValue
+                    }
                 }
                 TextField {
                     id: argsF
@@ -1266,9 +1292,15 @@ PluginPage {
         // 之前 height 用了 parent.height，而宿主内容区的高度又由子项撑开，
         // 于是「面板高度 ↔ 父项高度」互相依赖，滚动位置被反复重算：
         // 现象就是快速下滑时闪一下又弹回去、最后一张卡永远够不到。
-        width: parent.width
+        // 锚定顶部与左右、高度用显式值：
+        // 高度一旦写 parent.height 就会和「宿主内容区高度由子项撑开」互相依赖，
+        // 触发滚动回弹；而完全不锚定又会让面板回到布局流、被排到卡片列表下面，
+        // 于是盖不住卡片。这里两者兼顾。
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
         // 刻意比窗口高出一截：无论窗口化还是全屏，面板底部都落在窗口之外，
-        // 保持「从下方升起、下面还压着一点」的观感（窗口化时的默认观感就是这样）。
+        // 保持「从下方升起、下面还压着一点」的观感。
         height: (page.Window && page.Window.height ? page.Window.height : 640) + 160
         z: 1000
 
@@ -1683,6 +1715,123 @@ PluginPage {
                 }
 
 
+            }
+        }
+    }
+
+
+    /*!
+        应用挑选弹窗。
+
+        为什么另做一个，而不是给 ComboBox 的下拉加滚动条：
+        那要重写 Qt 自己维护的 popup 内部逻辑，实测会把列表搞成「只显示一项」。
+        这里用与编辑面板同一套、已验证稳定的本页内覆盖层，
+        列表与滚动条都是我们自己的：滚动条常驻且可以直接拖（拖比手指滑快得多）。
+    */
+    Item {
+        id: appPicker
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: (page.Window && page.Window.height ? page.Window.height : 640) + 160
+        z: 1100
+        visible: page.appPicking
+
+        onVisibleChanged: if (visible) { appPickSearch.text = ""; appPickList.refresh() }
+
+        Rectangle { anchors.fill: parent; color: "#66000000" }
+
+        Rectangle {
+            id: pickSheet
+            x: 30
+            width: parent.width - 60
+            height: Math.min(parent.height - 80, 480)
+            anchors.verticalCenter: parent.verticalCenter
+            radius: page.cardRadius
+            color: Theme.currentTheme.colors.backgroundAcrylicColor
+            border.width: Theme.currentTheme.appearance.borderWidth
+            border.color: Theme.currentTheme.colors.windowBorderColor
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text { typography: Typography.BodyStrong; text: "选择应用" }
+                    Item { Layout.fillWidth: true }
+                    Button { text: "关闭"; onClicked: page.appPicking = false }
+                }
+
+                TextField {
+                    id: appPickSearch
+                    Layout.fillWidth: true
+                    placeholderText: "输入关键字筛选（例如 chrome、微信、记事本）"
+                    onTextChanged: appPickList.refresh()
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 6
+                    color: "transparent"
+                    border.width: Theme.currentTheme.appearance.borderWidth
+                    border.color: Theme.currentTheme.colors.windowBorderColor
+
+                    ListView {
+                        id: appPickList
+                        anchors.fill: parent
+                        anchors.rightMargin: 14          // 给滚动条留位置
+                        clip: true
+                        spacing: 2
+                        boundsBehavior: Flickable.StopAtBounds
+                        currentIndex: -1
+
+                        function refresh() {
+                            var kw = String(appPickSearch.text || "").toLowerCase()
+                            var out = []
+                            for (var i = 0; i < page.appLabels.length; i++) {
+                                if (!kw || String(page.appLabels[i]).toLowerCase().indexOf(kw) >= 0)
+                                    out.push(i)
+                            }
+                            appPickList.model = out
+                        }
+
+                        delegate: ItemDelegate {
+                            width: appPickList.width
+                            text: page.appLabels[modelData]
+                            onClicked: {
+                                appPickList.currentIndex = index
+                                page.appPickValue = page.appTargets[modelData]
+                            }
+                        }
+
+                        // 常驻、可直接拖的右侧滚动条
+                        ScrollBar.vertical: ScrollBar {
+                            policy: ScrollBar.AlwaysOn
+                            width: 12
+                            minimumSize: 0.08
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        elide: Text.ElideMiddle
+                        text: page.appPickValue ? ("已选：" + page.appPickValue) : "未选择（在上面的列表里点一项）"
+                    }
+                    Button {
+                        text: "确定"
+                        highlighted: true
+                        enabled: !!page.appPickValue
+                        onClicked: page.acceptAppPick()
+                    }
+                }
             }
         }
     }
