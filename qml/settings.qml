@@ -1299,9 +1299,10 @@ PluginPage {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        // 刻意比窗口高出一截：无论窗口化还是全屏，面板底部都落在窗口之外，
-        // 保持「从下方升起、下面还压着一点」的观感。
-        height: (page.Window && page.Window.height ? page.Window.height : 640) + 160
+        // 高度按窗口自适应：小窗口时也保证面板不超出一屏，
+        // 内部的 ScrollView 才能把「触发器 / 规则集 / 行动」全部滚到；
+        // 同时也避免面板把宿主页面撑出多余的滚动条。
+        height: Math.max(320, Math.min((page.Window && page.Window.height ? page.Window.height : 640) - 140, 620))
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
@@ -1737,7 +1738,13 @@ PluginPage {
         z: 1100
         visible: page.appPicking
 
-        onVisibleChanged: if (visible) { appPickSearch.text = ""; appPickList.refresh() }
+        onVisibleChanged: if (visible) {
+            appPickSearch.text = ""
+            // 先读缓存：页面默认不做加载期枚举（那会在图形线程上同步跑 PowerShell，
+            // 实测会让主程序崩），所以 appLabels 很可能是空的——空列表连滚动条都不会有。
+            page.ensureApps(false)
+            appPickList.refresh()
+        }
 
         Rectangle { anchors.fill: parent; color: "#66000000" }
 
@@ -1797,6 +1804,17 @@ PluginPage {
                                     out.push(i)
                             }
                             appPickList.model = out
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            width: parent.width - 40
+                            wrapMode: Text.Wrap
+                            horizontalAlignment: Text.AlignHCenter
+                            visible: appPickList.count === 0
+                            text: page.appLabels.length === 0
+                                  ? "应用列表还是空的。回到编辑器点一次「刷新列表」抓取（约 3 秒，只抓一次，之后都走缓存）。"
+                                  : "没有匹配的应用，换个关键字试试。"
                         }
 
                         delegate: ItemDelegate {
