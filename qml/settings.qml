@@ -1266,10 +1266,14 @@ PluginPage {
             // 里面再放三张模块卡（触发器 / 规则集 / 行动），层级和卡片列表页保持一致。
             id: sheet
             width: parent.width - 32
-            height: parent.height - 32
+            // 高度封顶到一个窗口：内容区可滚动，不封顶的话面板会比视口还高，
+            // 底部的按钮就会被挤到看不见的地方。
+            height: Math.min(parent.height - 32,
+                             (page.Window && page.Window.height ? page.Window.height : parent.height) - 32)
             x: 16
             radius: page.cardRadius
-            color: Theme.currentTheme.colors.backgroundAcrylicColor
+            // 浅灰面板
+            color: "#F1F2F4"
             border.width: Theme.currentTheme.appearance.borderWidth
             border.color: Theme.currentTheme.colors.windowBorderColor
 
@@ -1297,6 +1301,21 @@ PluginPage {
                         opacity: 0.7
                         text: page.statusText
                     }
+                }
+
+                RowLayout {
+                    // 按钮行放在页头下方，而不是面板底部。
+                    // 原因：设置页的内容区本身可滚动，面板底部会落到视口之外，
+                    // 按钮就"看不见"了（之前找不到删除按钮就是这个原因）。
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Button {
+                        text: page.draftIsNew ? "放弃新建" : "删除此自动化"
+                        onClicked: page.draftIsNew ? page.closeEditor(false) : page.askDelete()
+                    }
+                    Item { Layout.fillWidth: true }
+                    Button { text: "取消"; onClicked: page.closeEditor(false) }
+                    Button { text: "保存"; highlighted: true; onClicked: page.closeEditor(true) }
                 }
 
                 ScrollView {
@@ -1544,19 +1563,7 @@ PluginPage {
                     }
                 }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    // 删除放在这里：原来埋在滚动区最底部的「保存与测试」卡里，
-                    // 要一路滚到底才看得到，等于没有。新建状态则显示「放弃新建」。
-                    Button {
-                        text: page.draftIsNew ? "放弃新建" : "删除此自动化"
-                        onClicked: page.draftIsNew ? page.closeEditor(false) : page.askDelete()
-                    }
-                    Item { Layout.fillWidth: true }
-                    Button { text: "取消"; onClicked: page.closeEditor(false) }
-                    Button { text: "保存"; highlighted: true; onClicked: page.closeEditor(true) }
-                }
+
             }
         }
     }
