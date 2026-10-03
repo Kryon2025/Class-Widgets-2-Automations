@@ -85,8 +85,11 @@ def available() -> bool:
     return _load()
 
 
-def _run(coro):
-    return asyncio.run(coro)
+def _run(op):
+    """winrt 的异步操作返回 _IAsyncOperation（非协程），必须先 await 再 asyncio.run。"""
+    async def _await():
+        return await op
+    return asyncio.run(_await())
 
 
 def _session():
