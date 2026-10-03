@@ -59,10 +59,23 @@ PluginPage {
         "当前教师是", "下节课教师是", "系统设置…", "媒体状态", "系统通知…" ]
 
     property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
-        "set_config", "lock", "restart",   "open_settings", "set_theme", "power", "volume", "media", "app", "sys_notify" ]
+        "set_config", "lock", "restart",   "open_settings", "set_theme", "power", "volume", "media", "app", "sys_notify",
+        "rollcall_roll", "rollcall_set", "rollcall_close" ]
     property var actLabels: ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
         "设置配置项", "锁定配置项", "重启主程序",   "打开系统设置页",
-        "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理", "发系统通知" ]
+        "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理", "发系统通知",
+        "触发随机点名", "设置随机点名", "关闭点名窗口" ]
+
+    // ── 随机点名（com.rollcall）配置项清单（顺序 = 后端 ROLLCALL_SETTERS）
+    property var rollcallKeys: ["luck_enabled", "no_repeat", "animation_seconds",
+        "notify_duration", "window_visible", "float_mode", "click_hide",
+        "button_width", "button_height", "mode"]
+    property var rollcallLabels: ["概率抽点（按权重）", "一轮之内不重复", "滚动动画时长（秒）",
+        "播报停留时长（秒）", "显示悬浮按钮", "浮窗模式", "点击后隐藏",
+        "按钮宽度", "按钮高度", "表现形式"]
+    property var rollcallBoolKeys: ["luck_enabled", "no_repeat", "window_visible",
+                                    "float_mode", "click_hide"]
+    function rollcallIsBool(k) { return page.rollcallBoolKeys.indexOf(k) >= 0 }
 
     // 主题模式 / 范围（与 win_settings.THEME_MODES / THEME_SCOPES 一致）
     // 电源 / 音量（与 win_settings.POWER_MODES / VOLUME_MODES 一致）
@@ -708,6 +721,9 @@ PluginPage {
             case "volume": return actVolumeComp
             case "media": return actMediaComp
             case "sys_notify": return actSysNotifyComp
+            case "rollcall_roll": return actRollcallRollComp
+            case "rollcall_set": return actRollcallSetComp
+            case "rollcall_close": return actRollcallCloseComp
             default: return null
         }
     }
@@ -1582,6 +1598,88 @@ PluginPage {
                 placeholderText: "值"
                 onTextEdited: if (it) it.p2 = text
             }
+        }
+    }
+
+    Component {
+        id: actRollcallRollComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            property bool loading: false
+            function load(item) {
+                it = item
+                loading = true
+                cntSpin.value = parseInt(item.p1 || "1")
+                loading = false
+            }
+            SpinBox {
+                id: cntSpin
+                Layout.preferredWidth: 120
+                from: 1; to: 5; stepSize: 1; editable: true
+                onValueChanged: if (!loading && it) it.p1 = String(Math.round(value))
+            }
+            Text { text: "人（一次点名抽几人）" }
+        }
+    }
+
+    Component {
+        id: actRollcallSetComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            property bool loading: false
+
+            function keyOf() { return page.rollcallKeys[rcKey.currentIndex] || page.rollcallKeys[0] }
+            function isBoolKey() { return page.rollcallIsBool(keyOf()) }
+
+            function write() {
+                if (loading || !it)
+                    return
+                it.p1 = keyOf()
+                it.p2 = isBoolKey() ? (rcBool.checked ? "true" : "false") : String(Math.round(rcNum.value))
+            }
+
+            function load(item) {
+                it = item
+                loading = true
+                var idx = page.rollcallKeys.indexOf(item.p1)
+                rcKey.currentIndex = idx >= 0 ? idx : 0
+                var raw = String(item.p2 === undefined || item.p2 === null ? "" : item.p2).trim().toLowerCase()
+                rcBool.checked = ["1", "true", "on", "yes", "是", "开", "开启"].indexOf(raw) >= 0
+                rcNum.value = parseInt(raw) || 0
+                loading = false
+            }
+
+            ComboBox {
+                id: rcKey
+                Layout.preferredWidth: 180
+                model: page.rollcallLabels
+                onActivated: write()
+            }
+            Switch {
+                id: rcBool
+                text: "开"
+                visible: isBoolKey()
+                onToggled: write()
+            }
+            SpinBox {
+                id: rcNum
+                Layout.preferredWidth: 110
+                from: 0; to: 3600; stepSize: 1; editable: true
+                visible: !isBoolKey()
+                onValueChanged: write()
+            }
+        }
+    }
+
+    Component {
+        id: actRollcallCloseComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            function load(item) { it = item }
+            Text { text: "关闭点名结果窗口（滚动中或已定格都能关）" }
         }
     }
 
