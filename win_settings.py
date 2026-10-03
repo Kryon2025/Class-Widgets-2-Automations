@@ -85,3 +85,102 @@ def open_page(page_id: str) -> bool:
     except Exception as e:                        # noqa: BLE001
         logger.warning("[win_settings] 打开系统设置失败({}): {}", target, e)
         return False
+
+
+# ── 主题（深/浅色）—— Light Switch 同款 ───────────────────────
+# 位置：HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize
+#   AppsUseLightTheme    应用用浅色（1=浅 0=深）
+#   SystemUsesLightTheme 系统用浅色（任务栏/开始菜单等）
+_THEMES_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+
+THEME_SCOPES = ("both", "apps", "system")
+THEME_SCOPE_LABELS = ("全部（应用+系统）", "仅应用", "仅系统")
+THEME_MODES = ("light", "dark", "toggle")
+THEME_MODE_LABELS = ("浅色", "深色", "切换", )
+
+
+def _read_reg(name: str):
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _THEMES_KEY) as k:
+            v, _ = winreg.QueryValueEx(k, name)
+            return int(v)
+    except Exception:                                    # noqa: BLE001
+        return None
+
+
+def _write_reg(name: str, value: int) -> None:
+    import winreg
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _THEMES_KEY) as k:
+        winreg.SetValueEx(k, name, 0, winreg.REG_DWORD, int(value))
+
+
+def _broadcast_change() -> None:
+    """改完注册表要广播 WM_SETTINGCHANGE，否则不少程序不会立刻换肤。"""
+    try:
+        import ctypes
+        HWND_BROADCAST = 0xFFFF
+        WM_SETTINGCHANGE = 0x001A
+        ctypes.windll.user32.SendMessageTimeoutW(
+            HWND_BROADCAST, WM_SETTINGCHANGE, 0, "ImmersiveColorSet", 0x0002, 5000, None)
+    except Exception as e:                               # noqa: BLE001
+        logger.warning("[win_settings] 广播主题变更失败: {}", e)
+
+
+def get_theme() -> dict:
+    """读当前主题：{"apps": 1/0/None, "system": 1/0/None}（1=浅色）。"""
+    return {"apps": _read_reg("AppsUseLightTheme"),
+            "system": _read_reg("SystemUsesLightTheme")}
+
+
+def _theme_names(scope: str):
+    if scope == "apps":
+        return ["AppsUseLightTheme"]
+    if scope == "system":
+        return ["SystemUsesLightTheme"]
+    return ["AppsUseLightTheme", "SystemUsesLightTheme"]
+
+
+def set_theme(mode: str, scope: str = "both"):
+    """切换深/浅色。mode: light/dark/toggle；scope: both/apps/system。
+
+    返回切换**之前**的原始值（供恢复用）；mode 非法或写失败返回 None。
+    """
+    m = str(mode or "").strip().lower()
+    sc = str(scope or "both").strip().lower()
+    if sc not in THEME_SCOPES:
+        sc = "both"
+    if m not in THEME_MODES:
+        return None
+    orig = get_theme()
+    if m == "light":
+        light = 1
+    elif m == "dark":
+        light = 0
+    else:                                                # toggle
+        cur = orig["apps"] if sc in ("both", "apps") else orig["system"]
+        light = 0 if cur == 1 else 1
+    try:
+        for name in _theme_names(sc):
+            _write_reg(name, light)
+    except Exception as e:                               # noqa: BLE001
+        logger.warning("[win_settings] 切换主题失败: {}", e)
+        return None
+    _broadcast_change()
+    logger.info("[win_settings] 主题 -> {}（{}）", "浅色" if light else "深色", sc)
+    return orig
+
+
+def restore_theme(orig: dict) -> None:
+    """把主题还原成 orig（set_theme 的返回值）。"""
+    if not isinstance(orig, dict):
+        return
+    try:
+        if orig.get("apps") is not None:
+            _write_reg("AppsUseLightTheme", int(orig["apps"]))
+        if orig.get("system") is not None:
+            _write_reg("SystemUsesLightTheme", int(orig["system"]))
+        _broadcast_change()
+        logger.info("[win_settings] 主题已恢复: {}", orig)
+    except Exception as e:                               # noqa: BLE001
+        logger.warning("[win_settings] 恢复主题失败: {}", e)

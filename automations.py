@@ -83,8 +83,9 @@ A_RESTART = "restart"             # 重启主程序
 A_LAUNCH = "launch_app"           # 打开应用（已安装应用 / UWP / 指定 exe）
 A_CLOSE_APP = "close_app"         # 关闭应用（按进程名结束，见 _do_close_app）
 A_OPEN_SETTINGS = "open_settings" # 打开 Windows 系统设置页（ms-settings:）
+A_SET_THEME = "set_theme"         # 切换 Windows 深/浅色主题（可恢复）
 ACTION_TYPES = (A_RUN, A_LAUNCH, A_CLOSE_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
-                A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS)
+                A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -115,7 +116,7 @@ CONFIG_KEYS: dict[str, str] = {
 }
 
 # 可逆行动（支持恢复）
-REVERTIBLE_ACTIONS = (A_SET_CONFIG, A_LOCK, A_SET_FLAG)
+REVERTIBLE_ACTIONS = (A_SET_CONFIG, A_LOCK, A_SET_FLAG, A_SET_THEME)
 
 
 def coerce(value: Any, kind: str) -> Any:
@@ -448,6 +449,8 @@ class RuleEngine(QObject):
                 self._do_close_app(action)
             elif atype == A_OPEN_SETTINGS:
                 self._do_open_settings(action)
+            elif atype == A_SET_THEME:
+                self._do_set_theme(action, uid)
             elif atype == A_NOTIFY:
                 self._do_notify(action)
             elif atype == A_BROADCAST:
@@ -507,6 +510,18 @@ class RuleEngine(QObject):
     def _do_open_settings(self, a: dict) -> None:
         """打开 Windows 系统设置页：p1=页 id（如 colors / display / bluetooth）。"""
         win_settings.open_page(str(a.get("p1") or ""))
+
+    def _do_set_theme(self, a: dict, uid: Optional[str]) -> None:
+        """切换 Windows 深/浅色主题：p1=模式（light/dark/toggle），p2=范围（both/apps/system）。
+
+        可恢复：把切换前的原始值记进 rec["win"]["theme"]，_revert 时用 win_settings 写回。
+        """
+        orig = win_settings.set_theme(str(a.get("p1") or ""), str(a.get("p2") or "both"))
+        if orig is None:
+            return
+        if uid and uid in self._active:
+            rec = self._active[uid]
+            rec.setdefault("win", {}).setdefault("theme", orig)
 
     def set_notification_provider(self, provider) -> None:
         """接收插件在 on_load 里注册好的通知 provider。
@@ -690,6 +705,10 @@ class RuleEngine(QObject):
                 self._flags.pop(name, None)
             else:
                 self._flags[name] = orig
+        # 系统设置类（第②片起）：主题单独还原
+        theme = (rec.get("win") or {}).get("theme")
+        if theme:
+            win_settings.restore_theme(theme)
         for key in (rec.get("locked") or []):
             try:
                 self._api.globalconfig.unlock(key)

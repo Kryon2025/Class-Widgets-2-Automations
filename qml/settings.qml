@@ -37,9 +37,16 @@ PluginPage {
         "当前教师是", "下节课教师是"]
 
     property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
-        "set_config", "lock", "restart", "launch_app", "close_app", "open_settings"]
+        "set_config", "lock", "restart", "launch_app", "close_app", "open_settings", "set_theme"]
     property var actLabels: ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
-        "设置配置项", "锁定配置项", "重启主程序", "打开应用", "关闭应用", "打开系统设置页"]
+        "设置配置项", "锁定配置项", "重启主程序", "打开应用", "关闭应用", "打开系统设置页",
+        "切换深/浅色主题"]
+
+    // 主题模式 / 范围（与 win_settings.THEME_MODES / THEME_SCOPES 一致）
+    property var themeModes: ["light", "dark", "toggle"]
+    property var themeModeLabels: ["浅色", "深色", "切换"]
+    property var themeScopes: ["both", "apps", "system"]
+    property var themeScopeLabels: ["全部（应用+系统）", "仅应用", "仅系统"]
 
     // 系统设置页（值 = ms-settings: 后面那段，与 win_settings.SETTINGS_PAGES 一致）
     property var settingsPages: ["personalization", "colors", "themes", "display",
@@ -422,6 +429,8 @@ PluginPage {
             case "set_config": return page.keyLabelOf(t.p1)
             case "lock": return page.keyLabelOf(t.p1) + (t.p2 === "unlock" ? "（解锁）" : "（锁定）")
             case "open_settings": return page.settingsPageLabels[Math.max(0, page.settingsPages.indexOf(t.p1))]
+            case "set_theme": return page.themeModeLabels[Math.max(0, page.themeModes.indexOf(t.p1))]
+                + " · " + page.themeScopeLabels[Math.max(0, page.themeScopes.indexOf(t.p2))]
             default: return ""
         }
     }
@@ -603,6 +612,7 @@ PluginPage {
             case "launch_app": return actLaunchComp
             case "close_app": return actCloseComp
             case "open_settings": return actOpenSettingsComp
+            case "set_theme": return actSetThemeComp
             default: return null
         }
     }
@@ -1346,6 +1356,37 @@ PluginPage {
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
+            }
+        }
+    }
+
+    Component {
+        id: actSetThemeComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+
+            function load(item) {
+                it = item
+                modeCombo.currentIndex = Math.max(0, page.themeModes.indexOf(item.p1 || "dark"))
+                scopeCombo.currentIndex = Math.max(0, page.themeScopes.indexOf(item.p2 || "both"))
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                ComboBox {
+                    id: modeCombo
+                    Layout.fillWidth: true
+                    model: page.themeModeLabels
+                    onActivated: if (it) it.p1 = page.themeModes[index]
+                }
+                ComboBox {
+                    id: scopeCombo
+                    Layout.fillWidth: true
+                    model: page.themeScopeLabels
+                    onActivated: if (it) it.p2 = page.themeScopes[index]
+                }
             }
         }
     }
