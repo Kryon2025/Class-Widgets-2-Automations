@@ -2661,7 +2661,12 @@ PluginPage {
 
                         SettingCard {
                             Layout.fillWidth: true
-                            title: qsTr("提示")
+                            Layout.topMargin: 10
+                            Layout.bottomMargin: 10
+                            color: "transparent"
+                            border.color: "transparent"
+                            icon.name: "ic_fluent_info_20_regular"
+                            title: qsTr("恢复")
                             description: qsTr("未开启「恢复」的自动化只会执行一次，执行完毕后会自动停用。需要反复触发请开启「恢复」。")
                         }
 
