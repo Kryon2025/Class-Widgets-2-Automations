@@ -28,6 +28,12 @@ def _load() -> bool:
     global _Manager, _IMPORT_ERR
     if _Manager is not None:
         return True
+    # 主程序加载完插件后会重置 sys.path（防插件污染），所以这里每次都要重新挂一次
+    try:
+        import deps
+        deps.ensure_sys_path()
+    except Exception:                                    # noqa: BLE001
+        pass
     try:
         from winrt.windows.media.control import (
             GlobalSystemMediaTransportControlsSessionManager as M,
@@ -58,9 +64,9 @@ def _diag_once() -> None:
         import sys
         from pathlib import Path
         v = Path(__file__).resolve().parent / "vendor"
-        logger.warning("[media] 诊断: frozen={} | vendor={} | vendor在sys.path={} | "
-                       "vendor/winrt={} | winrt/__init__.py={} | find_spec={}",
-                       getattr(sys, "frozen", False), v, str(v) in sys.path,
+        logger.warning("[media] 诊断: frozen={} | vendor在sys.path={} | vendor/winrt={} | "
+                       "winrt/__init__.py={} | find_spec={}",
+                       getattr(sys, "frozen", False), str(v) in sys.path,
                        (v / "winrt").is_dir(), (v / "winrt" / "__init__.py").exists(),
                        _safe_find("winrt"))
     except Exception as e:                               # noqa: BLE001
