@@ -59,10 +59,10 @@ PluginPage {
         "当前教师是", "下节课教师是", "系统设置…", "媒体状态" ]
 
     property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
-        "set_config", "lock", "restart", "launch_app", "close_app", "open_settings", "set_theme", "power", "volume", "media" ]
+        "set_config", "lock", "restart",   "open_settings", "set_theme", "power", "volume", "media", "app" ]
     property var actLabels: ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
-        "设置配置项", "锁定配置项", "重启主程序", "打开应用", "关闭应用", "打开系统设置页",
-        "切换深/浅色主题", "电源", "音量", "媒体控制" ]
+        "设置配置项", "锁定配置项", "重启主程序",   "打开系统设置页",
+        "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理" ]
 
     // 主题模式 / 范围（与 win_settings.THEME_MODES / THEME_SCOPES 一致）
     // 电源 / 音量（与 win_settings.POWER_MODES / VOLUME_MODES 一致）
@@ -459,8 +459,7 @@ PluginPage {
                 + " " + page.sysOpLabels[Math.max(0, page.sysOps.indexOf(t.p2))] + " " + (t.p3 || "")
             case "flag_is": return t.p1 || ""
             case "run": return t.p1 || ""
-            case "launch_app": return page.appNameOf(t.p1)
-            case "close_app": return page.appNameOf(t.p1)
+            case "app": return (t.p4 === "close" ? "关闭 " : "打开 ") + page.appNameOf(t.p1)
             case "notify": return t.p1 || ""
             case "wait": return t.p1 ? (t.p1 + " 秒") : ""
             case "broadcast": return t.p1 || ""
@@ -656,8 +655,7 @@ PluginPage {
             case "set_flag": return actSetFlagComp
             case "set_config": return actSetConfigComp
             case "lock": return actLockComp
-            case "launch_app": return actLaunchComp
-            case "close_app": return actCloseComp
+            case "app": return actAppComp
             case "open_settings": return actOpenSettingsComp
             case "set_theme": return actSetThemeComp
             case "power": return actPowerComp
@@ -1253,6 +1251,42 @@ PluginPage {
     }
 
     // ══════════════ 行动字段组件 ══════════════
+    Component {
+        id: actAppComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+
+            function load(item) {
+                it = item
+                if (item.p4 !== "close") item.p4 = "open"
+                modeCombo.currentIndex = (item.p4 === "close" ? 1 : 0)
+                refreshSub()
+            }
+
+            function refreshSub() {
+                if (!it) return
+                sub.sourceComponent = (it.p4 === "close" ? actCloseComp : actLaunchComp)
+                if (sub.item && sub.item.load) sub.item.load(it)
+            }
+
+            ComboBox {
+                id: modeCombo
+                Layout.fillWidth: true
+                model: ["打开应用", "关闭应用"]
+                onActivated: {
+                    if (!it) return
+                    it.p4 = (index === 1 ? "close" : "open")
+                    refreshSub()
+                }
+            }
+            Loader {
+                id: sub
+                Layout.fillWidth: true
+            }
+        }
+    }
+
     Component {
         id: actRunComp
         RowLayout {

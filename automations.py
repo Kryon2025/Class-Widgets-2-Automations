@@ -88,13 +88,14 @@ A_SET_CONFIG = "set_config"       # 设置配置项（主题/锚点/层级/隐�
 A_LOCK = "lock"                   # 锁定配置项
 A_RESTART = "restart"             # 重启主程序
 A_LAUNCH = "launch_app"           # 打开应用（已安装应用 / UWP / 指定 exe）
-A_CLOSE_APP = "close_app"         # 关闭应用（按进程名结束，见 _do_close_app）
+A_CLOSE_APP = "close_app"         # 关闭应用（旧类型，加载时迁移到 app）
+A_APP = "app"                     # 应用管理：p4=open/close，p1=目标
 A_OPEN_SETTINGS = "open_settings" # 打开 Windows 系统设置页（ms-settings:）
 A_SET_THEME = "set_theme"         # 切换 Windows 深/浅色主题（可恢复）
 A_POWER = "power"                 # 电源：关机/重启/注销/睡眠/休眠（p1 模式）
 A_VOLUME = "volume"               # 音量：增大/减小/静音/设为某值（p1 模式 p2 值）
 A_MEDIA = "media"                 # 媒体控制：播放/暂停/上下首/停止（p1 命令）
-ACTION_TYPES = (A_RUN, A_LAUNCH, A_CLOSE_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
+ACTION_TYPES = (A_RUN, A_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
                 A_POWER, A_VOLUME, A_MEDIA)
 
@@ -475,10 +476,11 @@ class RuleEngine(QObject):
         try:
             if atype == A_RUN:
                 self._do_run(action)
-            elif atype == A_LAUNCH:
-                self._do_launch(action)
-            elif atype == A_CLOSE_APP:
-                self._do_close_app(action)
+            if atype == A_APP:
+                if str(action.get("p4") or "") == "close":
+                    self._do_close_app(action)
+                else:
+                    self._do_launch(action)
             elif atype == A_OPEN_SETTINGS:
                 self._do_open_settings(action)
             elif atype == A_SET_THEME:
@@ -1003,6 +1005,14 @@ class RuleEngine(QObject):
                     "p4": str(src.get("p4") or ""),
                     "reversed": bool(src.get("reversed"))}
 
+        def migrate_action(a: dict) -> dict:
+            t = str(a.get("type") or "")
+            if t == "launch_app":
+                a = dict(a); a["type"] = "app"; a["p4"] = "open"
+            elif t == "close_app":
+                a = dict(a); a["type"] = "app"; a["p4"] = "close"
+            return a
+
         triggers = [fields(t) for t in (r.get("triggers") or [])
                     if isinstance(t, dict) and t.get("type") in TRIGGER_TYPES]
         if not triggers:
@@ -1025,8 +1035,8 @@ class RuleEngine(QObject):
         if not rulesets:
             rulesets = [{"enabled": False, "mode": "all", "reversed": False, "rules": []}]
 
-        actions = [fields(a) for a in (r.get("actions") or [])
-                   if isinstance(a, dict) and a.get("type") in ACTION_TYPES]
+        actions = [fields(migrate_action(a)) for a in (r.get("actions") or [])
+                   if isinstance(a, dict) and migrate_action(a).get("type") in ACTION_TYPES]
         if not actions:
             actions = [{"type": A_NOTIFY, "p1": "自动化提醒", "p2": "", "p3": "4000",
                         "p4": "0", "reversed": False}]
