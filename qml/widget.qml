@@ -16,8 +16,9 @@ Widget {
     readonly property int enabledCount: stats.enabled || 0
     readonly property int activeCount: stats.active || 0
 
-    // 没有任何自动化在执行时，整个小组件不出现
-    visible: root.activeCount > 0
+    // 展示态下只在有自动化生效时出现；编辑态下始终显示，否则用户找不到它
+    // editMode 继承自 BaseWidget（ClassWidgets.Theme），由 WidgetLoader 赋值
+    visible: editMode || root.activeCount > 0
 
     function refresh() {
         if (!backend || !backend.statusJson)
