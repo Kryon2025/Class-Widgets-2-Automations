@@ -196,6 +196,7 @@ class RuleEngine(QObject):
         self._storage = storage_path
         self._rules: list[dict] = []
         self._flags: dict[str, str] = {}
+        self._exec = None          # 当前执行态（小组件展示用）
         self._active: dict[str, dict] = {}   # uid -> {"keys": {path: orig}, "rule": rule}
         self._flag_originals: dict[str, Optional[str]] = {}
         self._provider = None
@@ -510,6 +511,56 @@ class RuleEngine(QObject):
 
     # ── 触发执行 ────────────────────────────────────────────
 
+    # ── 执行态（小组件展示用）──────────────────────────────
+
+    # 动作链跑完后仍保留展示的秒数，否则秒级轮询根本看不到
+    EXEC_LINGER = 3.0
+
+    def _begin_exec(self, rule: dict) -> None:
+        actions = rule.get("actions") or []
+        self._exec = {
+            "uid": rule.get("uid"),
+            "name": rule.get("name") or "自动化",
+            "index": 0,
+            "total": len(actions),
+            "done": False,
+            "steps": [{"type": (a or {}).get("type"),
+                       "p1": (a or {}).get("p1"),
+                       "p2": (a or {}).get("p2"),
+                       "p4": (a or {}).get("p4")} for a in actions],
+            "rule": rule,
+        }
+        self._exec_until = 0.0
+
+    def _finish_exec(self) -> None:
+        st = self._exec
+        if st is None:
+            return
+        if st.get("done"):
+            return          # 幂等：动作链收尾与手动收尾可能各触发一次
+        st["done"] = True
+        st["index"] = len(st.get("steps") or [])
+        self._exec_until = datetime.datetime.now().timestamp() + self.EXEC_LINGER
+        # 没有开「恢复」= 只执行一次，跑完自动停用
+        rule = st.get("rule") or {}
+        if not rule.get("revert") and rule.get("enabled"):
+            rule["enabled"] = False
+            try:
+                self.save()
+            except Exception as e:
+                logger.warning("[automations] 自动停用保存失败: {}", e)
+            logger.info("[automations] 无恢复：执行完毕，已自动停用「{}」", rule.get("name"))
+
+    def exec_snapshot(self):
+        """返回当前（或刚刚结束的）执行态；无则 None。"""
+        st = self._exec
+        if st is None:
+            return None
+        if st.get("done") and datetime.datetime.now().timestamp() > getattr(self, "_exec_until", 0):
+            self._exec = None
+            return None
+        return st
+
     def _maybe_fire(self, rule: dict, trig: dict) -> None:
         if not self._evaluate_ruleset(rule):
             return
@@ -520,14 +571,18 @@ class RuleEngine(QObject):
         if rule.get("revert") and uid not in self._active:
             self._active[uid] = {"keys": {}, "flags": {}, "locked": [], "rule": rule}
         logger.info("[automations] 触发: {}", rule.get("name"))
+        self._begin_exec(rule)
         self._exec_at(rule.get("actions") or [], 0, 50, uid)
 
     def _exec_at(self, actions: list, index: int, delay_ms: int, uid: Optional[str] = None) -> None:
         if index >= len(actions):
+            self._finish_exec()
             return
         QTimer.singleShot(delay_ms, lambda: self._step(actions, index, uid))
 
     def _step(self, actions: list, index: int, uid: Optional[str]) -> None:
+        if self._exec is not None:
+            self._exec["index"] = index
         action = actions[index] or {}
         atype = action.get("type")
         wait_ms = 0

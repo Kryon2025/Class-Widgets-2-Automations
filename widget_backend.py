@@ -28,7 +28,7 @@ class AutomationsWidgetBackend(QObject):
         """{"total": 总条数, "enabled": 已启用, "active": 正在生效}"""
         engine = self._engine()
         if engine is None:
-            return json.dumps({"total": 0, "enabled": 0, "active": 0})
+            return json.dumps({"total": 0, "enabled": 0, "active": 0, "exec": None})
 
         try:
             rules = engine.get_rules() or []
@@ -48,4 +48,20 @@ class AutomationsWidgetBackend(QObject):
         except Exception:
             active = 0
 
-        return json.dumps({"total": len(rules), "enabled": enabled, "active": active})
+        # 当前（或刚刚结束、仍在展示期内的）执行态
+        exec_state = None
+        try:
+            snap = engine.exec_snapshot()
+            if snap:
+                exec_state = {
+                    "name": snap.get("name") or "自动化",
+                    "index": snap.get("index", 0),
+                    "total": snap.get("total", 0),
+                    "done": bool(snap.get("done")),
+                    "steps": snap.get("steps") or [],
+                }
+        except Exception:
+            exec_state = None
+
+        return json.dumps({"total": len(rules), "enabled": enabled, "active": active,
+                           "exec": exec_state})
