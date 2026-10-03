@@ -2594,6 +2594,14 @@ PluginPage {
                     spacing: 8
                     Button {
                         text: page.draftIsNew ? "放弃新建" : "删除此自动化"
+                        flat: true
+                        contentItem: Text {
+                            text: parent.text
+                            color: page.draftIsNew ? "#8a8a8a" : "#d13438"
+                            font: parent.font
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
                         onClicked: page.draftIsNew ? page.closeEditor(false) : page.askDelete()
                     }
                     Button { text: "测试执行"; onClicked: page.testDraft() }
@@ -2613,6 +2621,12 @@ PluginPage {
                     ColumnLayout {
                         width: sheet.width - 44 - 14
                         spacing: 12
+
+                        InfoBar {
+                            Layout.fillWidth: true
+                            severity: Severity.Info
+                            text: "未开启「恢复」的自动化只会执行一次，执行完毕后会自动停用。需要反复触发请开启「恢复」。"
+                        }
 
                         Frame {
                             Layout.fillWidth: true
@@ -2647,10 +2661,7 @@ PluginPage {
                                             onTextEdited: page.commit("description", text)
                                         }
                                         Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
-                                        Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked)
-                                            ToolTip.visible: hovered
-                                            ToolTip.text: "未开启恢复：本自动化只执行一次，执行完毕后会自动停用。需要反复触发请开启「恢复」。"
-                                        }
+                                        Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
                                     }
                             }
                         }
