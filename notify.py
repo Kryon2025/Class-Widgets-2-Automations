@@ -2,7 +2,7 @@
 """系统通知：读 Windows 通知库（wpndatabase.db / appdb.dat）+ 发 toast。
 
 零额外依赖：
-    读 —— 标准库 sqlite3 + xml.etree，直接读 Windows 通知中心数据库；
+    读 —— 标准库 sqlite3 + 正则（不用 xml，冻结版主程序没打包 xml），直接读 Windows 通知中心数据库；
     发 —— vendor 里的 winsdk（惰性导入、失败优雅降级，与 media.py 同一套做法）。
 
 能力：
@@ -13,8 +13,8 @@
 from __future__ import annotations
 
 import os
+import re
 import time
-import xml.etree.ElementTree as ET
 
 from loguru import logger
 
@@ -93,12 +93,35 @@ def available() -> bool:
     return _avail
 
 
+_RE_TEXT = re.compile(r"<text\b[^>]*>(.*?)</text>", re.S)
+_RE_ENT = re.compile(r"&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);")
+_ENT = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'"}
+
+
+def _unescape(s: str) -> str:
+    def _one(m):
+        e = m.group(1)
+        if e in _ENT:
+            return _ENT[e]
+        try:
+            return chr(int(e[2:], 16) if e[:2] in ("#x", "#X") else int(e[1:]))
+        except ValueError:
+            return m.group(0)
+    return _RE_ENT.sub(_one, s)
+
+
 def _texts(payload) -> list:
+    """从 toast 的 XML payload 里抠 <text>…</text>。
+
+    不用 xml.etree：冻结版主程序**没打包 xml**，顶层 import 它会让整个插件加载失败
+    （而 payload 是系统生成的规整 XML，正则足矣）。
+    """
     if not payload:
         return []
     try:
-        root = ET.fromstring(payload)
-        return [t.text or "" for t in root.iter() if t.tag.rsplit("}", 1)[-1] == "text"]
+        if isinstance(payload, (bytes, bytearray)):     # DB 里 Payload 是 bytes
+            payload = bytes(payload).decode("utf-8", "replace")
+        return [_unescape(t) for t in _RE_TEXT.findall(str(payload))]
     except Exception:                                # noqa: BLE001
         return []
 
