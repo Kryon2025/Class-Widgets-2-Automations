@@ -11,9 +11,10 @@ from pathlib import Path
 
 from ClassWidgets.SDK import CW2Plugin, PluginAPI
 from loguru import logger
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Signal, Slot
 
 from automations import RuleEngine
+import deps
 
 CFG_NAME = "com.kryon.automations.json"
 
@@ -49,6 +50,9 @@ def _app_root() -> Path:
 class Plugin(CW2Plugin):
     """Kryon 自动化：引擎 + 设置页后端。"""
 
+    # 依赖安装进度（供设置页进度条用）：done, total, name
+    depsProgress = Signal(int, int, str)
+
     def __init__(self, api: PluginAPI):
         super().__init__(api)
         self._engine: RuleEngine | None = None
@@ -57,6 +61,12 @@ class Plugin(CW2Plugin):
 
     def on_load(self):
         super().on_load()
+        # 地基：先把插件自带的依赖解包就绪，后面的能力（SMTC/通知等）才可用
+        try:
+            r = deps.ensure()
+            logger.info("[automations] 自带依赖: {}/{}", r.get("done"), r.get("total"))
+        except Exception as e:
+            logger.warning("[automations] 自带依赖初始化失败: {}", e)
 
         # 通知 provider 必须在这里注册：主程序只在插件回调（on_load 等）期间设置
         # current_plugin，等自动化触发时再注册会被拒绝
@@ -131,6 +141,35 @@ class Plugin(CW2Plugin):
         logger.info("[automations] 插件已卸载")
 
     # ── 设置页槽 ─────────────────────────────────────────────
+
+    @Slot(result=str)
+    def getDepsStatusJson(self) -> str:
+        """自带依赖的状态（设置页「附加选项」用）。"""
+        try:
+            return json.dumps(deps.status(), ensure_ascii=False)
+        except Exception as e:
+            logger.warning("[automations] 读依赖状态失败: {}", e)
+            return "{}"
+
+    @Slot(result=bool)
+    def installDeps(self) -> bool:
+        """（重）安装随插件分发的依赖，过程中发 depsProgress 信号刷进度条。"""
+        def cb(done, total, name):
+            try:
+                self.depsProgress.emit(int(done), int(total), str(name))
+            except Exception:
+                pass
+        try:
+            deps.ensure(progress=cb)
+            return True
+        except Exception as e:
+            logger.warning("[automations] 安装依赖失败: {}", e)
+            return False
+
+    @Slot(str, result=bool)
+    def canImport(self, module: str) -> bool:
+        """某项能力是否可用（依赖是否就绪）。"""
+        return deps.can_import(str(module or ""))
 
     @Slot(result=str)
     def getRulesJson(self) -> str:

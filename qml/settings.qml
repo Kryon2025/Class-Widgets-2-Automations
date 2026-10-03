@@ -25,24 +25,51 @@ PluginPage {
 
     // ── 类型清单（顺序 = 后端常量表）────────────────────────
     property var trigTypes: ["time", "interval", "class_start", "class_end", "break_start",
-        "after_school", "status_change", "before_class", "app_start", "signal", "alarm"]
+        "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot" ]
     property var trigLabels: ["定时", "间隔触发", "上课时", "下课时", "课间休息时",
-        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟"]
+        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后" ]
 
     property var ruleTypes: ["always_true", "always_false", "today_is", "later_than",
         "current_subject", "next_subject", "prev_subject", "current_status",
-        "foreground_window", "flag_is", "current_teacher", "next_teacher"]
+        "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting"]
+
+    // 系统设置条件（与 win_settings.SYS_RULE_KEYS 一致）
+    property var sysKeys: ["theme_apps", "theme_system", "ac_power", "battery_percent", "network"]
+    property var sysKeyLabels: ["应用主题（深/浅）", "系统主题（深/浅）", "电源（接电/电池）",
+        "电池电量 %", "网络"]
+    property var sysValueMap: {
+        "theme_apps": ["light", "dark"],
+        "theme_system": ["light", "dark"],
+        "ac_power": ["ac", "battery"],
+        "network": ["online", "offline"]
+    }
+    property var sysValueLabelMap: {
+        "theme_apps": ["浅色", "深色"],
+        "theme_system": ["浅色", "深色"],
+        "ac_power": ["接电源", "用电池"],
+        "network": ["已连接", "未连接"]
+    }
+    function sysValueOptions(k) { return sysValueMap[k] || [] }
+    function sysValueLabels(k) { return sysValueLabelMap[k] || [] }
+    function sysIsNumber(k) { return k === "battery_percent" }
+    property var sysOps: ["==", "!=", ">", ">=", "<", "<="]
+    property var sysOpLabels: ["是", "不是", "大于", "大于等于", "小于", "小于等于"]
     property var ruleLabels: ["总是为真", "总是为假", "今天是…", "时间晚于…", "当前科目是",
         "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
-        "当前教师是", "下节课教师是"]
+        "当前教师是", "下节课教师是", "系统设置…" ]
 
     property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
-        "set_config", "lock", "restart", "launch_app", "close_app", "open_settings", "set_theme"]
+        "set_config", "lock", "restart", "launch_app", "close_app", "open_settings", "set_theme", "power", "volume" ]
     property var actLabels: ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
         "设置配置项", "锁定配置项", "重启主程序", "打开应用", "关闭应用", "打开系统设置页",
-        "切换深/浅色主题"]
+        "切换深/浅色主题", "电源", "音量" ]
 
     // 主题模式 / 范围（与 win_settings.THEME_MODES / THEME_SCOPES 一致）
+    // 电源 / 音量（与 win_settings.POWER_MODES / VOLUME_MODES 一致）
+    property var powerModes: ["poweroff", "restart", "logoff", "sleep", "hibernate"]
+    property var powerLabels: ["关机", "重启", "注销", "睡眠", "休眠"]
+    property var volumeModes: ["up", "down", "mute", "set"]
+    property var volumeLabels: ["增大", "减小", "静音（切换）", "设为指定值 %"]
     property var themeModes: ["light", "dark", "toggle"]
     property var themeModeLabels: ["浅色", "深色", "切换"]
     property var themeScopes: ["both", "apps", "system"]
@@ -407,6 +434,9 @@ PluginPage {
         switch (t.type) {
             case "time": return t.p1 || ""
             case "interval": return t.p1 ? (t.p1 + " 秒") : ""
+            case "sys_change": return page.sysKeyLabels[Math.max(0, page.sysKeys.indexOf(t.p1))]
+                + " 变化" + (t.p2 ? ("为 " + t.p2) : "")
+            case "boot": return "开机后 " + (t.p1 || "120") + " 秒内"
             case "before_class": return t.p1 ? (t.p1 + " 秒前") : ""
             case "signal": return t.p1 || ""
             case "today_is": return page.labelOf(page.weekValues, page.weekLabels, t.p1)
@@ -418,6 +448,8 @@ PluginPage {
             case "current_teacher":
             case "next_teacher": return t.p1 || ""
             case "foreground_window": return t.p1 || ""
+            case "sys_setting": return page.sysKeyLabels[Math.max(0, page.sysKeys.indexOf(t.p1))]
+                + " " + page.sysOpLabels[Math.max(0, page.sysOps.indexOf(t.p2))] + " " + (t.p3 || "")
             case "flag_is": return t.p1 || ""
             case "run": return t.p1 || ""
             case "launch_app": return page.appNameOf(t.p1)
@@ -431,6 +463,9 @@ PluginPage {
             case "open_settings": return page.settingsPageLabels[Math.max(0, page.settingsPages.indexOf(t.p1))]
             case "set_theme": return page.themeModeLabels[Math.max(0, page.themeModes.indexOf(t.p1))]
                 + " · " + page.themeScopeLabels[Math.max(0, page.themeScopes.indexOf(t.p2))]
+            case "power": return "电源：" + page.powerLabels[Math.max(0, page.powerModes.indexOf(t.p1))]
+            case "volume": return "音量：" + page.volumeLabels[Math.max(0, page.volumeModes.indexOf(t.p1))]
+                + (t.p1 === "set" ? (" " + (t.p2 || "50") + "%") : "")
             default: return ""
         }
     }
@@ -579,6 +614,8 @@ PluginPage {
         switch (t) {
             case "time": return trigTimeComp
             case "interval": return trigIntervalComp
+            case "sys_change": return trigSysComp
+            case "boot": return trigBootComp
             case "before_class": return trigBeforeComp
             case "signal": return trigSignalComp
             case "alarm": return trigAlarmComp
@@ -594,6 +631,7 @@ PluginPage {
             case "prev_subject": return ruleSubjectComp
             case "current_status": return ruleStatusComp
             case "foreground_window": return ruleForegroundComp
+            case "sys_setting": return ruleSysComp
             case "flag_is": return ruleFlagComp
             case "current_teacher":
             case "next_teacher": return ruleTeacherComp
@@ -613,6 +651,8 @@ PluginPage {
             case "close_app": return actCloseComp
             case "open_settings": return actOpenSettingsComp
             case "set_theme": return actSetThemeComp
+            case "power": return actPowerComp
+            case "volume": return actVolumeComp
             default: return null
         }
     }
@@ -918,6 +958,133 @@ PluginPage {
                 implicitWidth: 68
                 implicitHeight: 30
                 onClicked: page.openListPick(stCombo, page.statusLabels, "选择时间状态")
+            }
+        }
+    }
+
+    Component {
+        id: trigSysComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+
+            function load(item) {
+                it = item
+                if (!it.p1) it.p1 = "theme_apps"   // 补默认（p2 留空 = 任意变化）
+                keyCombo.currentIndex = Math.max(0, page.sysKeys.indexOf(item.p1 || "theme_apps"))
+                refresh()
+                wantCombo.currentIndex = Math.max(0, page.sysValueOptions(item.p1 || "theme_apps").indexOf(item.p2 || "") + 1)
+            }
+
+            function refresh() {
+                var k = it ? (it.p1 || "theme_apps") : "theme_apps"
+                wantCombo.model = ["（任意变化）"].concat(page.sysValueLabels(k))
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                ComboBox {
+                    id: keyCombo
+                    Layout.fillWidth: true
+                    model: page.sysKeyLabels
+                    onActivated: {
+                        if (!it) return
+                        it.p1 = page.sysKeys[index]
+                        it.p2 = ""
+                        refresh()
+                        wantCombo.currentIndex = 0
+                    }
+                }
+                ComboBox {
+                    id: wantCombo
+                    Layout.fillWidth: true
+                    model: ["（任意变化）"]
+                    onActivated: if (it) it.p2 = (index === 0 ? "" : page.sysValueOptions(it.p1)[index - 1])
+                }
+            }
+        }
+    }
+
+    Component {
+        id: trigBootComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                if (!it.p1) it.p1 = "120"
+                secF.text = it.p1
+            }
+            TextField {
+                id: secF
+                Layout.fillWidth: true
+                placeholderText: "开机多少秒内算「刚开机」（默认 120）"
+                onTextEdited: if (it) it.p1 = text
+            }
+        }
+    }
+
+    Component {
+        id: ruleSysComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+
+            function load(item) {
+                it = item
+                if (!it.p1) it.p1 = "theme_apps"   // 补默认
+                if (!it.p2) it.p2 = "=="           // 补默认
+                keyCombo.currentIndex = Math.max(0, page.sysKeys.indexOf(item.p1 || "theme_apps"))
+                opCombo.currentIndex = Math.max(0, page.sysOps.indexOf(item.p2 || "=="))
+                refreshValue()
+            }
+
+            function refreshValue() {
+                var k = it ? (it.p1 || "theme_apps") : "theme_apps"
+                var num = page.sysIsNumber(k)
+                valueCombo.visible = !num
+                valF.visible = num
+                var opts = page.sysValueOptions(k)
+                valueCombo.model = page.sysValueLabels(k)
+                var i = opts.indexOf(it ? (it.p3 || "") : "")
+                valueCombo.currentIndex = i >= 0 ? i : 0
+                if (num) { valF.text = it ? (it.p3 || "") : "" }
+                else if (it && it.p3 !== opts[valueCombo.currentIndex]) { it.p3 = opts[valueCombo.currentIndex] || "" }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                ComboBox {
+                    id: keyCombo
+                    Layout.fillWidth: true
+                    model: page.sysKeyLabels
+                    onActivated: {
+                        if (!it) return
+                        it.p1 = page.sysKeys[index]
+                        it.p3 = ""
+                        refreshValue()
+                    }
+                }
+                ComboBox {
+                    id: opCombo
+                    Layout.preferredWidth: 110
+                    model: page.sysOpLabels
+                    onActivated: if (it) it.p2 = page.sysOps[index]
+                }
+            }
+            ComboBox {
+                id: valueCombo
+                Layout.fillWidth: true
+                onActivated: if (it) it.p3 = page.sysValueOptions(it.p1)[index]
+            }
+            TextField {
+                id: valF
+                Layout.fillWidth: true
+                visible: false
+                placeholderText: "数值（如 30）"
+                onTextEdited: if (it) it.p3 = text
             }
         }
     }
@@ -1361,6 +1528,58 @@ PluginPage {
     }
 
     Component {
+        id: actPowerComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                if (!it.p1) it.p1 = "poweroff"
+                modeCombo.currentIndex = Math.max(0, page.powerModes.indexOf(it.p1))
+            }
+            ComboBox {
+                id: modeCombo
+                Layout.fillWidth: true
+                model: page.powerLabels
+                onActivated: if (it) it.p1 = page.powerModes[index]
+            }
+        }
+    }
+
+    Component {
+        id: actVolumeComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                if (!it.p1) it.p1 = "up"
+                modeCombo.currentIndex = Math.max(0, page.volumeModes.indexOf(it.p1))
+                if (!it.p2) it.p2 = "50"
+                valF.text = it.p2
+                valF.visible = (it.p1 === "set")
+            }
+            ComboBox {
+                id: modeCombo
+                Layout.fillWidth: true
+                model: page.volumeLabels
+                onActivated: {
+                    if (!it) return
+                    it.p1 = page.volumeModes[index]
+                    valF.visible = (it.p1 === "set")
+                }
+            }
+            TextField {
+                id: valF
+                Layout.fillWidth: true
+                visible: false
+                placeholderText: "音量 0-100"
+                onTextEdited: if (it) it.p2 = text
+            }
+        }
+    }
+
+    Component {
         id: actSetThemeComp
         ColumnLayout {
             spacing: 6
@@ -1368,6 +1587,8 @@ PluginPage {
 
             function load(item) {
                 it = item
+                if (!it.p1) it.p1 = "dark"      // 补默认
+                if (!it.p2) it.p2 = "both"      // 补默认
                 modeCombo.currentIndex = Math.max(0, page.themeModes.indexOf(item.p1 || "dark"))
                 scopeCombo.currentIndex = Math.max(0, page.themeScopes.indexOf(item.p2 || "both"))
             }
@@ -1399,6 +1620,7 @@ PluginPage {
 
             function load(item) {
                 it = item
+                if (!it.p1) it.p1 = "personalization"   // 补默认：显示即已存
                 var t = item.p1 || "personalization"
                 var i = page.settingsPages.indexOf(t)
                 pageCombo.currentIndex = i >= 0 ? i : 0

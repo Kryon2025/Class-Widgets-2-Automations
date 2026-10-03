@@ -44,8 +44,11 @@ T_BEFORE_CLASS = "before_class" # 上课前 N 秒
 T_APP_START = "app_start"       # 应用启动时
 T_SIGNAL = "signal"             # 收到信号
 T_ALARM = "alarm"               # 闹钟（到点自己响铃）
+T_SYS_CHANGE = "sys_change"       # 系统设置变化时（p1 键，p2 可选「变为」）
+T_BOOT = "boot"                   # 开机后（p1 = 开机多少秒内算"刚开机"，默认 120）
 TRIGGER_TYPES = (T_ALARM, T_TIME, T_INTERVAL, T_CLASS_START, T_CLASS_END, T_BREAK_START,
-                 T_AFTER_SCHOOL, T_STATUS_CHANGE, T_BEFORE_CLASS, T_APP_START, T_SIGNAL)
+                 T_AFTER_SCHOOL, T_STATUS_CHANGE, T_BEFORE_CLASS, T_APP_START, T_SIGNAL,
+                 T_SYS_CHANGE, T_BOOT)
 
 # 触发器逆事件（用于恢复）
 TRIGGER_INVERSE = {
@@ -67,9 +70,11 @@ R_FOREGROUND_WINDOW = "foreground_window"
 R_FLAG_IS = "flag_is"             # 读标志
 R_CURRENT_TEACHER = "current_teacher"  # 当前教师是
 R_NEXT_TEACHER = "next_teacher"        # 下节课教师是
+R_SYS_SETTING = "sys_setting"          # 系统设置：主题/电源/电池/网络（p1 键 p2 比较 p3 值）
 RULE_TYPES = (R_ALWAYS_TRUE, R_ALWAYS_FALSE, R_TODAY_IS, R_LATER_THAN,
               R_CURRENT_SUBJECT, R_NEXT_SUBJECT, R_PREV_SUBJECT, R_CURRENT_STATUS,
-              R_FOREGROUND_WINDOW, R_FLAG_IS, R_CURRENT_TEACHER, R_NEXT_TEACHER)
+              R_FOREGROUND_WINDOW, R_FLAG_IS, R_CURRENT_TEACHER, R_NEXT_TEACHER,
+              R_SYS_SETTING)
 
 # ── 行动类型（顺序 = QML 下拉顺序）────────────────────────────
 A_RUN = "run"                     # 运行命令/程序/网址
@@ -84,8 +89,11 @@ A_LAUNCH = "launch_app"           # 打开应用（已安装应用 / UWP / 指�
 A_CLOSE_APP = "close_app"         # 关闭应用（按进程名结束，见 _do_close_app）
 A_OPEN_SETTINGS = "open_settings" # 打开 Windows 系统设置页（ms-settings:）
 A_SET_THEME = "set_theme"         # 切换 Windows 深/浅色主题（可恢复）
+A_POWER = "power"                 # 电源：关机/重启/注销/睡眠/休眠（p1 模式）
+A_VOLUME = "volume"               # 音量：增大/减小/静音/设为某值（p1 模式 p2 值）
 ACTION_TYPES = (A_RUN, A_LAUNCH, A_CLOSE_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
-                A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME)
+                A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
+                A_POWER, A_VOLUME)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -305,6 +313,27 @@ class RuleEngine(QObject):
                 trig["_fp"] = fp
                 return True
             return False
+        if t == T_BOOT:
+            # 开机后：本次开机的 boot_id 与上次触发过的不一样，且开机时长在窗口内
+            bid = win_settings.boot_id()
+            if bid and getattr(self, "_boot_fired", None) != bid:
+                win_secs = max(1, int(float(trig.get("p1") or 120)))
+                up = win_settings.uptime_seconds()
+                if 0 <= up <= win_secs:
+                    self._boot_fired = bid
+                    return True
+            return False
+        if t == T_SYS_CHANGE:
+            key = str(trig.get("p1") or "").strip()
+            if not key:
+                return False
+            cur = win_settings.read_setting(key)
+            prev = self._sys_prev.get(key)
+            self._sys_prev[key] = cur
+            if prev is None or cur == prev:
+                return False
+            want = str(trig.get("p2") or "").strip()
+            return (cur == want) if want else True
         return False
 
     def _has_class_today(self) -> bool:
@@ -451,6 +480,11 @@ class RuleEngine(QObject):
                 self._do_open_settings(action)
             elif atype == A_SET_THEME:
                 self._do_set_theme(action, uid)
+            elif atype == A_POWER:
+                win_settings.power_action(str(action.get("p1") or ""))
+            elif atype == A_VOLUME:
+                win_settings.volume_action(str(action.get("p1") or ""),
+                                           str(action.get("p2") or ""))
             elif atype == A_NOTIFY:
                 self._do_notify(action)
             elif atype == A_BROADCAST:
@@ -607,6 +641,10 @@ class RuleEngine(QObject):
         # 必须落盘并通知主程序，否则层级/锚点/偏移这类窗口属性不会真正生效
         self._commit_config()
         logger.info("[automations] 设置 {} = {}", key, value)
+
+    # 系统设置「上次值」—— 供 T_SYS_CHANGE 比较变化（放在类上，不动 __init__）
+    _sys_prev: dict = {}
+    _boot_fired = None
 
     # 延后合并保存用的状态（放在类上，不需要动 __init__）
     _config_dirty = False
@@ -782,6 +820,8 @@ class RuleEngine(QObject):
                 v = self._teacher_match(self._api.runtime.current_subject, p1)
             elif t == R_NEXT_TEACHER:
                 v = self._teacher_match(self._next_subject(), p1)
+            elif t == R_SYS_SETTING:
+                v = win_settings.rule_match(p1, p2, p3)
             else:
                 v = False
         except Exception:
