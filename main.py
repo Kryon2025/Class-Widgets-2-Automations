@@ -187,6 +187,31 @@ class Plugin(CW2Plugin):
         """某项能力是否可用（依赖是否就绪）。"""
         return deps.can_import(str(module or ""))
 
+    @Slot(result=bool)
+    def rollcallAvailable(self) -> bool:
+        """随机点名插件是否在场。"""
+        try:
+            return self._engine is not None and self._engine._rollcall() is not None
+        except Exception:
+            return False
+
+    @Slot(result=bool)
+    def rollcallExtEnabled(self) -> bool:
+        try:
+            if self._engine is None:
+                return False
+            self._engine.ensure_ext_defaults()   # 首次读取时按插件是否在场定默认值
+            return bool(self._engine.ext_enabled("rollcall"))
+        except Exception:
+            return False
+
+    @Slot(bool, result=bool)
+    def setRollcallExtEnabled(self, on: bool) -> bool:
+        try:
+            return bool(self._engine.set_ext("rollcall", on)) if self._engine else False
+        except Exception:
+            return False
+
     @Slot(result=str)
     def getRulesJson(self) -> str:
         rules = self._engine.get_rules() if self._engine else []

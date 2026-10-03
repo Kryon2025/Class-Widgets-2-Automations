@@ -18,23 +18,57 @@ PluginPage {
     pluginId: "com.kryon.automations"
     title: "自动化"
 
-    extraHeaderItems: Button {
-        text: "窗口调试"
-        onClicked: if (backend) backend.openWindowDebugger()
+    extraHeaderItems: RowLayout {
+        spacing: 8
+
+        Switch {
+            id: rollcallSwitch
+            text: "随机点名联动"
+            checked: page.rollcallExt
+            enabled: backend && backend.setRollcallExtEnabled
+            Component.onCompleted: if (backend && backend.rollcallExtEnabled)
+                                       page.rollcallExt = backend.rollcallExtEnabled()
+            onToggled: {
+                page.rollcallExt = checked
+                if (backend && backend.setRollcallExtEnabled)
+                    backend.setRollcallExtEnabled(checked)
+            }
+            ToolTip.visible: hovered
+            ToolTip.text: backend && backend.rollcallAvailable && backend.rollcallAvailable()
+                          ? "在三个模块中显示随机点名（com.rollcall）相关项"
+                          : "未检测到随机点名插件（com.rollcall）"
+        }
+
+        Button {
+            text: "窗口调试"
+            onClicked: if (backend) backend.openWindowDebugger()
+        }
     }
 
     // ── 类型清单（顺序 = 后端常量表）────────────────────────
-    property var trigTypes: ["time", "interval", "class_start", "class_end", "break_start",
-        "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot", "notif_new",
-        "rollcall_start", "rollcall_picked" ]
-    property var trigLabels: ["定时", "间隔触发", "上课时", "下课时", "课间休息时",
-        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后", "收到系统通知时",
-        "随机点名开始", "随机点名出结果后" ]
+    // 扩展功能：随机点名联动（关闭时三个模块都不出现随机点名项）
+    property bool rollcallExt: false
 
-    property var ruleTypes: ["always_true", "always_false", "today_is", "later_than",
-        "current_subject", "next_subject", "prev_subject", "current_status",
-        "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media", "notif",
-        "rollcall_config" ]
+    readonly property var trigTypes: {
+        var a = ["time", "interval", "class_start", "class_end", "break_start",
+            "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot", "notif_new"]
+        if (page.rollcallExt) a = a.concat(["rollcall_start", "rollcall_picked"])
+        return a
+    }
+    readonly property var trigLabels: {
+        var a = ["定时", "间隔触发", "上课时", "下课时", "课间休息时",
+            "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后", "收到系统通知时"]
+        if (page.rollcallExt) a = a.concat(["随机点名开始", "随机点名出结果后"])
+        return a
+    }
+
+    readonly property var ruleTypes: {
+        var a = ["always_true", "always_false", "today_is", "later_than",
+            "current_subject", "next_subject", "prev_subject", "current_status",
+            "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media", "notif"]
+        if (page.rollcallExt) a = a.concat(["rollcall_config"])
+        return a
+    }
 
     // 系统设置条件（与 win_settings.SYS_RULE_KEYS 一致）
     property var sysKeys: ["theme_apps", "theme_system", "ac_power", "battery_percent", "network"]
@@ -57,18 +91,27 @@ PluginPage {
     function sysIsNumber(k) { return k === "battery_percent" }
     property var sysOps: ["==", "!=", ">", ">=", "<", "<="]
     property var sysOpLabels: ["是", "不是", "大于", "大于等于", "小于", "小于等于"]
-    property var ruleLabels: ["总是为真", "总是为假", "今天是…", "时间晚于…", "当前科目是",
-        "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
-        "当前教师是", "下节课教师是", "系统设置…", "媒体状态", "系统通知…",
-        "随机点名配置…" ]
+    readonly property var ruleLabels: {
+        var a = ["总是为真", "总是为假", "今天是…", "时间晚于…", "当前科目是",
+            "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
+            "当前教师是", "下节课教师是", "系统设置…", "媒体状态", "系统通知…"]
+        if (page.rollcallExt) a = a.concat(["随机点名配置…"])
+        return a
+    }
 
-    property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
-        "set_config", "lock", "restart",   "open_settings", "set_theme", "power", "volume", "media", "app", "sys_notify",
-        "rollcall_roll", "rollcall_set", "rollcall_close" ]
-    property var actLabels: ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
-        "设置配置项", "锁定配置项", "重启主程序",   "打开系统设置页",
-        "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理", "发系统通知",
-        "触发随机点名", "设置随机点名", "关闭点名窗口" ]
+    readonly property var actTypes: {
+        var a = ["run", "notify", "wait", "broadcast", "set_flag",
+            "set_config", "lock", "restart", "open_settings", "set_theme", "power", "volume", "media", "app", "sys_notify"]
+        if (page.rollcallExt) a = a.concat(["rollcall_roll", "rollcall_set", "rollcall_close"])
+        return a
+    }
+    readonly property var actLabels: {
+        var a = ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
+            "设置配置项", "锁定配置项", "重启主程序", "打开系统设置页",
+            "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理", "发系统通知"]
+        if (page.rollcallExt) a = a.concat(["触发随机点名", "设置随机点名", "关闭点名窗口"])
+        return a
+    }
 
     // ── 随机点名（com.rollcall）配置项清单（顺序 = 后端 ROLLCALL_SETTERS）
     property var rollcallKeys: ["luck_enabled", "no_repeat", "animation_seconds",

@@ -197,6 +197,8 @@ class RuleEngine(QObject):
         self._rules: list[dict] = []
         self._flags: dict[str, str] = {}
         self._exec = None          # 当前执行态（小组件展示用）
+        self._ext: dict = {}       # 扩展功能开关（如 rollcall 联动）
+        self._ext_known = False    # 文件里是否已有 ext（有则不再自动改写）
         self._active: dict[str, dict] = {}   # uid -> {"keys": {path: orig}, "rule": rule}
         self._flag_originals: dict[str, Optional[str]] = {}
         self._provider = None
@@ -235,6 +237,10 @@ class RuleEngine(QObject):
                     if isinstance(data.get("rules"), list):
                         self._rules = [self._clean_rule(r) for r in data["rules"] if isinstance(r, dict)]
                     self._flags = {str(k): str(v) for k, v in (data.get("flags") or {}).items()}
+                    raw_ext = data.get("ext")
+                    if isinstance(raw_ext, dict):
+                        self._ext = {str(k): bool(v) for k, v in raw_ext.items()}
+                        self._ext_known = True
         except Exception as e:
             logger.warning("[automations] 读取配置失败: {}", e)
         self._prev_status = self._safe_status()
@@ -242,13 +248,35 @@ class RuleEngine(QObject):
     def save(self) -> bool:
         try:
             self._storage.parent.mkdir(parents=True, exist_ok=True)
-            payload = {"rules": self._rules, "flags": self._flags}
+            payload = {"rules": self._rules, "flags": self._flags, "ext": self._ext}
             self._storage.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
                                      encoding="utf-8")
             return True
         except Exception as e:
             logger.warning("[automations] 保存失败: {}", e)
             return False
+
+    # ── 扩展功能开关 ────────────────────────────────────────
+
+    def ensure_ext_defaults(self) -> None:
+        """首次运行（文件里没有 ext）时按插件是否在场给默认值并落盘。
+
+        之后一律以文件为准 —— 用户手动关掉不会被自动打开。
+        """
+        if self._ext_known:
+            return
+        self._ext = {"rollcall": self._rollcall() is not None}
+        self._ext_known = True
+        self.save()
+        logger.info("[automations] 扩展功能默认值: {}", self._ext)
+
+    def ext_enabled(self, name: str) -> bool:
+        return bool((self._ext or {}).get(str(name)))
+
+    def set_ext(self, name: str, on: bool) -> bool:
+        self._ext = self._ext or {}
+        self._ext[str(name)] = bool(on)
+        return self.save()
 
     def get_rules(self) -> list[dict]:
         return self._rules
