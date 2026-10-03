@@ -76,10 +76,12 @@ R_NEXT_TEACHER = "next_teacher"        # 下节课教师是
 R_SYS_SETTING = "sys_setting"          # 系统设置：主题/电源/电池/网络（p1 键 p2 比较 p3 值）
 R_MEDIA = "media"                      # 媒体状态：是否在播/曲名/歌手（p1 键 p2 比较 p3 值）
 R_NOTIF = "notif"                      # 系统通知：最近是否收到匹配的通知（p1 键 p2 比较 p3 值 p4 秒）
+# 随机点名：读它的配置项做判断（p1 = 配置项键，p2 = 期望值）
+R_ROLLCALL_CONFIG = "rollcall_config"
 RULE_TYPES = (R_ALWAYS_TRUE, R_ALWAYS_FALSE, R_TODAY_IS, R_LATER_THAN,
               R_CURRENT_SUBJECT, R_NEXT_SUBJECT, R_PREV_SUBJECT, R_CURRENT_STATUS,
               R_FOREGROUND_WINDOW, R_FLAG_IS, R_CURRENT_TEACHER, R_NEXT_TEACHER,
-              R_SYS_SETTING, R_MEDIA, R_NOTIF)
+              R_SYS_SETTING, R_MEDIA, R_NOTIF, R_ROLLCALL_CONFIG)
 
 # ── 行动类型（顺序 = QML 下拉顺序）────────────────────────────
 A_RUN = "run"                     # 运行命令/程序/网址
@@ -99,9 +101,18 @@ A_POWER = "power"                 # 电源：关机/重启/注销/睡眠/休眠�
 A_VOLUME = "volume"               # 音量：增大/减小/静音/设为某值（p1 模式 p2 值）
 A_MEDIA = "media"                 # 媒体控制：播放/暂停/上下首/停止（p1 命令）
 A_SYS_NOTIFY = "sys_notify"       # 发系统通知（toast）：p1 标题 p2 内容
+# 随机点名联动（扩展功能，需 com.rollcall 插件在场）
+A_ROLLCALL_ROLL = "rollcall_roll"     # 触发点名：p1 = 人数(1~5)
+A_ROLLCALL_SET = "rollcall_set"       # 设置随机点名配置项：p1 = 键 p2 = 值
+A_ROLLCALL_CLOSE = "rollcall_close"   # 关闭点名结果窗口
+
+# 随机点名插件的 id
+ROLLCALL_PLUGIN_ID = "com.rollcall"
+
 ACTION_TYPES = (A_RUN, A_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
-                A_POWER, A_VOLUME, A_MEDIA, A_SYS_NOTIFY)
+                A_POWER, A_VOLUME, A_MEDIA, A_SYS_NOTIFY,
+                A_ROLLCALL_ROLL, A_ROLLCALL_SET, A_ROLLCALL_CLOSE)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -512,6 +523,12 @@ class RuleEngine(QObject):
                 self._do_lock(action, uid)
             elif atype == A_RESTART:
                 self._api.application.restart()
+            elif atype == A_ROLLCALL_ROLL:
+                self._do_rollcall_roll(action)
+            elif atype == A_ROLLCALL_SET:
+                self._do_rollcall_set(action)
+            elif atype == A_ROLLCALL_CLOSE:
+                self._do_rollcall_close(action)
             elif atype == A_WAIT:
                 wait_ms = max(0, int(float(action.get("p1") or 0)) * 1000)
         except Exception as e:
@@ -805,6 +822,103 @@ class RuleEngine(QObject):
         mode = str(rule.get("rulesetMode") or "all").lower()
         return any(checks) if mode in ("any", "or") else all(checks)
 
+    # ── 随机点名（com.rollcall）桥接 ─────────────────────────
+    # 随机点名配置项 → 插件上的 setter 槽名（只含随机点名本身，不含 SecRandom）
+    ROLLCALL_SETTERS = {
+        "luck_enabled": "setLuckEnabled",
+        "no_repeat": "setNoRepeat",
+        "animation_seconds": "setAnimationSeconds",
+        "notify_duration": "setNotifyDuration",
+        "window_visible": "setWindowVisible",
+        "float_mode": "setFloatMode",
+        "click_hide": "setClickHide",
+        "button_width": "setButtonWidth",
+        "button_height": "setButtonHeight",
+        "mode": "setMode",
+    }
+    ROLLCALL_BOOL_KEYS = ("luck_enabled", "no_repeat", "window_visible",
+                          "float_mode", "click_hide")
+
+    def _rollcall(self):
+        """取随机点名插件实例。同进程直接拿对象；未装/未启用则返回 None。"""
+        try:
+            pm = getattr(self._api._app, "plugin_manager", None)
+            plugins = getattr(pm, "_plugins", None)
+            if plugins:
+                return plugins.get(ROLLCALL_PLUGIN_ID)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _as_bool(raw) -> bool:
+        return str(raw).strip().lower() in ("1", "true", "on", "yes", "是", "开", "开启")
+
+    def _do_rollcall_roll(self, a: dict) -> None:
+        rc = self._rollcall()
+        if rc is None:
+            logger.warning("[automations] 随机点名插件不可用，跳过触发点名")
+            return
+        try:
+            n = int(float(str(a.get("p1") or "1")))
+        except Exception:
+            n = 1
+        n = max(1, min(5, n))
+        rc.requestRoll(n)
+        logger.info("[automations] 触发随机点名 {} 人", n)
+
+    def _do_rollcall_set(self, a: dict) -> None:
+        rc = self._rollcall()
+        if rc is None:
+            logger.warning("[automations] 随机点名插件不可用，跳过配置修改")
+            return
+        key = str(a.get("p1") or "")
+        slot = self.ROLLCALL_SETTERS.get(key)
+        if not slot:
+            logger.warning("[automations] 未知的随机点名配置项: {}", key)
+            return
+        fn = getattr(rc, slot, None)
+        if not callable(fn):
+            logger.warning("[automations] 随机点名插件缺少 {}（版本不匹配？）", slot)
+            return
+        raw = a.get("p2")
+        if key in self.ROLLCALL_BOOL_KEYS:
+            value = self._as_bool(raw)
+        else:
+            try:
+                value = int(float(str(raw)))
+            except Exception:
+                value = str(raw or "")
+        fn(value)
+        logger.info("[automations] 设置随机点名 {} = {}", key, value)
+
+    def _do_rollcall_close(self, a: dict) -> None:
+        rc = self._rollcall()
+        if rc is None:
+            return
+        fn = getattr(rc, "closeResult", None)
+        if callable(fn):
+            fn()
+            logger.info("[automations] 关闭点名结果窗口")
+        else:
+            logger.warning("[automations] 随机点名插件缺少 closeResult（版本不匹配？）")
+
+    def _rollcall_cfg_is(self, key: str, expect: str) -> bool:
+        """随机点名配置项是否等于期望值（按字符串比较，忽略大小写）。"""
+        rc = self._rollcall()
+        if rc is None or not key:
+            return False
+        try:
+            cfg = rc.getConfig()
+        except Exception:
+            return False
+        if not isinstance(cfg, dict) or key not in cfg:
+            return False
+        actual = cfg.get(key)
+        if isinstance(actual, bool):
+            actual = "true" if actual else "false"
+        return str(actual).strip().lower() == str(expect).strip().lower()
+
     def _eval_rule(self, r: dict) -> bool:
         t = r.get("type")
         p1 = str(r.get("p1") or "")
@@ -841,6 +955,8 @@ class RuleEngine(QObject):
                 v = media.rule_match(p1, p2, p3)
             elif t == R_NOTIF:
                 v = notify.rule_match(p1, p2, p3, str(r.get("p4") or "60"))
+            elif t == R_ROLLCALL_CONFIG:
+                v = self._rollcall_cfg_is(p1, p2)
             else:
                 v = False
         except Exception:
