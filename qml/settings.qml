@@ -2604,7 +2604,10 @@ PluginPage {
                                             onTextEdited: page.commit("description", text)
                                         }
                                         Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
-                                        Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
+                                        Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked)
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "未开启恢复：本自动化只执行一次，执行完毕后会自动停用。需要反复触发请开启「恢复」。"
+                                        }
                                     }
                             }
                         }
