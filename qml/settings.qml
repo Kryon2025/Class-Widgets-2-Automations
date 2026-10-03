@@ -1050,21 +1050,74 @@ PluginPage {
         ColumnLayout {
             spacing: 6
             property var it: null
+
             function load(item) {
                 it = item
-                appF.text = item.p1 || ""
+                page.ensureApps(false)
+                rebuild()
                 textF.text = item.p2 || ""
             }
-            TextField {
-                id: appF
+
+            // 来源下拉：用「已安装应用列表」（去掉末尾的「手动输入路径」哨兵）
+            function rebuild() {
+                var all = page.appLabels || []
+                var labels = all.slice(0, Math.max(0, all.length - 1))
+                appCombo.model = ["（任意应用）"].concat(labels)
+                var v = it ? String(it.p1 || "") : ""
+                var i = labels.indexOf(v)
+                appCombo.currentIndex = (v === "" ? 0 : (i >= 0 ? i + 1 : 0))
+                customF.text = v
+                customF.visible = (v !== "" && i < 0)
+            }
+
+            Connections {
+                target: page
+                function onAppLabelsChanged() { if (it) rebuild() }
+            }
+            Connections {
+                target: page
+                function onAppPickNonceChanged() {
+                    if (!page.appPickValue || !it || page.appPickOwner !== it) return
+                    var i = page.appTargets.indexOf(String(page.appPickValue))
+                    it.p1 = (i >= 0 ? String(page.appLabels[i]) : String(page.appPickValue))
+                    rebuild()
+                }
+            }
+
+            RowLayout {
                 Layout.fillWidth: true
-                placeholderText: "应用名包含（可空 = 任意应用）"
+                spacing: 6
+                ComboBox {
+                    id: appCombo
+                    Layout.fillWidth: true
+                    model: ["（任意应用）"]
+                    onActivated: {
+                        if (!it) return
+                        it.p1 = (index === 0 ? "" : String(appCombo.model[index]))
+                        customF.text = it.p1
+                        customF.visible = false
+                    }
+                }
+                Button {
+                    text: "从列表选择…"
+                    onClicked: {
+                        page.appPickValue = ""
+                        page.appPickOwner = it
+                        page.appPicking = true
+                    }
+                }
+            }
+            TextField {
+                id: customF
+                Layout.fillWidth: true
+                visible: false
+                placeholderText: "或手输应用名（按「包含」匹配，可空 = 任意应用）"
                 onTextEdited: if (it) it.p1 = text
             }
             TextField {
                 id: textF
                 Layout.fillWidth: true
-                placeholderText: "内容包含（可空 = 任意内容）"
+                placeholderText: "通知内容包含（可空 = 任意内容）"
                 onTextEdited: if (it) it.p2 = text
             }
         }

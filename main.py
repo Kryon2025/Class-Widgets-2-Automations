@@ -76,6 +76,7 @@ class Plugin(CW2Plugin):
             provider = self.api.notification.register_provider(
                 provider_id=getattr(self, "pid", None) or "com.kryon.automations",
                 name="Kryon 自动化 / Kryon Automations",
+                icon="icon.png",
                 use_system_notify=True,
             )
             logger.info("[automations] 通知 provider 已注册")

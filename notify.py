@@ -30,6 +30,8 @@ _cache = {"t": 0.0, "rows": []}      # recent() 缓存（1 秒内不重复开库
 _poll_cache = {"t": 0.0, "new": []}  # poll_new() 缓存（同一次 tick 内多次调用共享结果）
 _CACHE_TTL = 1.0
 
+_name_map = {"t": 0.0, "m": {}}      # AUMID/可执行名(小写) → 友好显示名（来自 app_index）
+
 
 def _db_files() -> list:
     # Win10/多数 Win11 用 wpndatabase.db，部分新 Win11 用 appdb.dat，都试。
@@ -93,8 +95,10 @@ def _query_recent(limit: int = 50) -> list:
             texts = _texts(row["Payload"])
             if str(row["Type"] or "").lower() != "toast" and not texts:
                 continue                             # 过滤 tile/raw 等无文本条目
+            pid = str(handlers.get(row["HandlerId"], row["HandlerId"] or ""))
             rows.append({
-                "app": handlers.get(row["HandlerId"], str(row["HandlerId"] or "")),
+                "app": pid,
+                "app_name": _resolve_app(pid),
                 "arrival": row["ArrivalTime"],
                 "texts": texts,
             })
@@ -132,8 +136,62 @@ def poll_new() -> list:
     return new
 
 
+def _app_name_map() -> dict:
+    """AUMID / 可执行名（小写）→ 友好显示名；来源是插件自己的应用列表（app_index）。
+
+    这样下拉里选的「显示名」能对上通知库里的来源 ID：桌面应用是进程/名字，
+    UWP 是 AUMID（如 Microsoft.ScreenSketch_8wekyb3d8bbwe!App）。
+    """
+    now = time.monotonic()
+    if now - _name_map["t"] < 60.0 and _name_map["m"]:
+        return _name_map["m"]
+    m = {}
+    try:
+        import json
+
+        import app_index
+        raw = app_index.cached_apps_json()          # 只读缓存，绝不触发枚举
+        if raw:
+            for a in json.loads(raw):
+                if not isinstance(a, dict):
+                    continue
+                name = str(a.get("name") or "").strip()
+                target = str(a.get("target") or "").strip()
+                if not name or not target:
+                    continue
+                if target.lower().startswith("shell:appsfolder\\"):
+                    m[target[len("shell:AppsFolder\\"):].lower()] = name
+                base = target.replace("/", "\\").rsplit("\\", 1)[-1].lower()
+                if base.endswith(".lnk"):
+                    base = base[:-4]
+                if base:
+                    m.setdefault(base, name)
+    except Exception as e:                          # noqa: BLE001
+        logger.debug("[notify] 读取应用名映射失败: {}", e)
+    _name_map["t"] = now
+    _name_map["m"] = m
+    return m
+
+
+def _resolve_app(pid: str) -> str:
+    pid = str(pid or "")
+    m = _app_name_map()
+    if pid.lower() in m:
+        return m[pid.lower()]
+    base = pid.replace("/", "\\").rsplit("\\", 1)[-1].lower()
+    if base.endswith(".exe"):
+        base = base[:-4]
+    return m.get(base, pid)
+
+
+def _app_hit(r, needle: str) -> bool:
+    """来源匹配：拿「显示名」和「原始来源 ID」都按「包含」比一次（不区分大小写）。"""
+    n = str(needle or "").lower()
+    return n in str(r.get("app") or "").lower() or n in str(r.get("app_name") or "").lower()
+
+
 def _hit(r, app: str, text: str) -> bool:
-    if app and app not in str(r["app"]):
+    if app and not _app_hit(r, app):
         return False
     if text and text not in " ".join(r["texts"]):
         return False
@@ -158,7 +216,7 @@ def rule_match(key: str, op: str, value: str, window: str = "60") -> bool:
     floor = int((time.time() + _FT_UNIX_OFFSET) * 10_000_000) - win * 10_000_000
     rows = [r for r in recent() if r["arrival"] and r["arrival"] >= floor]
     if k == "app":
-        hit = any(v in str(r["app"]) for r in rows)
+        hit = any(_app_hit(r, v) for r in rows)
     else:
         hit = any(v in " ".join(r["texts"]) for r in rows)
     return hit if o not in ("!=", "<>", "≠", "不是") else (not hit)
