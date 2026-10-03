@@ -31,6 +31,7 @@ from loguru import logger
 import app_index
 import day_status
 import media
+import notify
 import win_settings
 
 # ── 触发器类型（顺序 = QML 下拉顺序）──────────────────────────
@@ -47,9 +48,10 @@ T_SIGNAL = "signal"             # 收到信号
 T_ALARM = "alarm"               # 闹钟（到点自己响铃）
 T_SYS_CHANGE = "sys_change"       # 系统设置变化时（p1 键，p2 可选「变为」）
 T_BOOT = "boot"                   # 开机后（p1 = 开机多少秒内算"刚开机"，默认 120）
+T_NOTIF = "notif_new"             # 收到系统通知时（p1 应用名含，p2 内容含，均可空）
 TRIGGER_TYPES = (T_ALARM, T_TIME, T_INTERVAL, T_CLASS_START, T_CLASS_END, T_BREAK_START,
                  T_AFTER_SCHOOL, T_STATUS_CHANGE, T_BEFORE_CLASS, T_APP_START, T_SIGNAL,
-                 T_SYS_CHANGE, T_BOOT)
+                 T_SYS_CHANGE, T_BOOT, T_NOTIF)
 
 # 触发器逆事件（用于恢复）
 TRIGGER_INVERSE = {
@@ -73,10 +75,11 @@ R_CURRENT_TEACHER = "current_teacher"  # 当前教师是
 R_NEXT_TEACHER = "next_teacher"        # 下节课教师是
 R_SYS_SETTING = "sys_setting"          # 系统设置：主题/电源/电池/网络（p1 键 p2 比较 p3 值）
 R_MEDIA = "media"                      # 媒体状态：是否在播/曲名/歌手（p1 键 p2 比较 p3 值）
+R_NOTIF = "notif"                      # 系统通知：最近是否收到匹配的通知（p1 键 p2 比较 p3 值 p4 秒）
 RULE_TYPES = (R_ALWAYS_TRUE, R_ALWAYS_FALSE, R_TODAY_IS, R_LATER_THAN,
               R_CURRENT_SUBJECT, R_NEXT_SUBJECT, R_PREV_SUBJECT, R_CURRENT_STATUS,
               R_FOREGROUND_WINDOW, R_FLAG_IS, R_CURRENT_TEACHER, R_NEXT_TEACHER,
-              R_SYS_SETTING, R_MEDIA)
+              R_SYS_SETTING, R_MEDIA, R_NOTIF)
 
 # ── 行动类型（顺序 = QML 下拉顺序）────────────────────────────
 A_RUN = "run"                     # 运行命令/程序/网址
@@ -95,9 +98,10 @@ A_SET_THEME = "set_theme"         # 切换 Windows 深/浅色主题（可恢复�
 A_POWER = "power"                 # 电源：关机/重启/注销/睡眠/休眠（p1 模式）
 A_VOLUME = "volume"               # 音量：增大/减小/静音/设为某值（p1 模式 p2 值）
 A_MEDIA = "media"                 # 媒体控制：播放/暂停/上下首/停止（p1 命令）
+A_SYS_NOTIFY = "sys_notify"       # 发系统通知（toast）：p1 标题 p2 内容
 ACTION_TYPES = (A_RUN, A_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
-                A_POWER, A_VOLUME, A_MEDIA)
+                A_POWER, A_VOLUME, A_MEDIA, A_SYS_NOTIFY)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -338,6 +342,8 @@ class RuleEngine(QObject):
                 return False
             want = str(trig.get("p2") or "").strip()
             return (cur == want) if want else True
+        if t == T_NOTIF:
+            return notify.poll_match(str(trig.get("p1") or ""), str(trig.get("p2") or ""))
         return False
 
     def _has_class_today(self) -> bool:
@@ -492,6 +498,8 @@ class RuleEngine(QObject):
                                            str(action.get("p2") or ""))
             elif atype == A_MEDIA:
                 media.action(str(action.get("p1") or ""))
+            elif atype == A_SYS_NOTIFY:
+                notify.send(str(action.get("p1") or ""), str(action.get("p2") or ""))
             elif atype == A_NOTIFY:
                 self._do_notify(action)
             elif atype == A_BROADCAST:
@@ -831,6 +839,8 @@ class RuleEngine(QObject):
                 v = win_settings.rule_match(p1, p2, p3)
             elif t == R_MEDIA:
                 v = media.rule_match(p1, p2, p3)
+            elif t == R_NOTIF:
+                v = notify.rule_match(p1, p2, p3, str(r.get("p4") or "60"))
             else:
                 v = False
         except Exception:

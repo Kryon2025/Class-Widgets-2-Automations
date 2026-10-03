@@ -25,13 +25,13 @@ PluginPage {
 
     // ── 类型清单（顺序 = 后端常量表）────────────────────────
     property var trigTypes: ["time", "interval", "class_start", "class_end", "break_start",
-        "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot" ]
+        "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot", "notif_new" ]
     property var trigLabels: ["定时", "间隔触发", "上课时", "下课时", "课间休息时",
-        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后" ]
+        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后", "收到系统通知时" ]
 
     property var ruleTypes: ["always_true", "always_false", "today_is", "later_than",
         "current_subject", "next_subject", "prev_subject", "current_status",
-        "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media" ]
+        "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media", "notif" ]
 
     // 系统设置条件（与 win_settings.SYS_RULE_KEYS 一致）
     property var sysKeys: ["theme_apps", "theme_system", "ac_power", "battery_percent", "network"]
@@ -56,13 +56,13 @@ PluginPage {
     property var sysOpLabels: ["是", "不是", "大于", "大于等于", "小于", "小于等于"]
     property var ruleLabels: ["总是为真", "总是为假", "今天是…", "时间晚于…", "当前科目是",
         "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
-        "当前教师是", "下节课教师是", "系统设置…", "媒体状态" ]
+        "当前教师是", "下节课教师是", "系统设置…", "媒体状态", "系统通知…" ]
 
     property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
-        "set_config", "lock", "restart",   "open_settings", "set_theme", "power", "volume", "media", "app" ]
+        "set_config", "lock", "restart",   "open_settings", "set_theme", "power", "volume", "media", "app", "sys_notify" ]
     property var actLabels: ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
         "设置配置项", "锁定配置项", "重启主程序",   "打开系统设置页",
-        "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理" ]
+        "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理", "发系统通知" ]
 
     // 主题模式 / 范围（与 win_settings.THEME_MODES / THEME_SCOPES 一致）
     // 电源 / 音量（与 win_settings.POWER_MODES / VOLUME_MODES 一致）
@@ -73,6 +73,11 @@ PluginPage {
     property var mediaActionLabels: ["播放 / 暂停", "播放", "暂停", "上一首", "下一首", "停止"]
     property var mediaKeys: ["playing", "title", "artist"]
     property var mediaKeyLabels: ["是否在播放", "曲名", "歌手"]
+    // 系统通知（与 notify.py 一致）
+    property var notifKeys: ["app", "text"]
+    property var notifKeyLabels: ["应用名", "内容"]
+    property var notifOps: ["==", "!="]
+    property var notifOpLabels: ["包含", "不包含"]
     property var volumeModes: ["up", "down", "mute", "set"]
     property var volumeLabels: ["增大", "减小", "静音（切换）", "设为指定值 %"]
     property var themeModes: ["light", "dark", "toggle"]
@@ -442,6 +447,7 @@ PluginPage {
             case "sys_change": return page.sysKeyLabels[Math.max(0, page.sysKeys.indexOf(t.p1))]
                 + " 变化" + (t.p2 ? ("为 " + t.p2) : "")
             case "boot": return "开机后 " + (t.p1 || "120") + " 秒内"
+            case "notif_new": return "收到系统通知" + (t.p1 ? (" · 应用含「" + t.p1 + "」") : "") + (t.p2 ? (" · 内容含「" + t.p2 + "」") : "")
             case "before_class": return t.p1 ? (t.p1 + " 秒前") : ""
             case "signal": return t.p1 || ""
             case "today_is": return page.labelOf(page.weekValues, page.weekLabels, t.p1)
@@ -457,6 +463,8 @@ PluginPage {
                 + " " + page.sysOpLabels[Math.max(0, page.sysOps.indexOf(t.p2))] + " " + (t.p3 || "")
             case "media": return page.mediaKeyLabels[Math.max(0, page.mediaKeys.indexOf(t.p1))]
                 + " " + page.sysOpLabels[Math.max(0, page.sysOps.indexOf(t.p2))] + " " + (t.p3 || "")
+            case "notif": return page.notifKeyLabels[Math.max(0, page.notifKeys.indexOf(t.p1))]
+                + " " + page.notifOpLabels[Math.max(0, page.notifOps.indexOf(t.p2))] + " " + (t.p3 || "")
             case "flag_is": return t.p1 || ""
             case "run": return t.p1 || ""
             case "app": return (t.p4 === "close" ? "关闭 " : "打开 ") + page.appNameOf(t.p1)
@@ -473,6 +481,7 @@ PluginPage {
             case "volume": return "音量：" + page.volumeLabels[Math.max(0, page.volumeModes.indexOf(t.p1))]
                 + (t.p1 === "set" ? (" " + (t.p2 || "50") + "%") : "")
             case "media": return "媒体控制：" + page.mediaActionLabels[Math.max(0, page.mediaActions.indexOf(t.p1))]
+            case "sys_notify": return "发系统通知：" + (t.p1 || "")
             default: return ""
         }
     }
@@ -623,6 +632,7 @@ PluginPage {
             case "interval": return trigIntervalComp
             case "sys_change": return trigSysComp
             case "boot": return trigBootComp
+            case "notif_new": return trigNotifComp
             case "before_class": return trigBeforeComp
             case "signal": return trigSignalComp
             case "alarm": return trigAlarmComp
@@ -640,6 +650,7 @@ PluginPage {
             case "foreground_window": return ruleForegroundComp
             case "sys_setting": return ruleSysComp
             case "media": return ruleMediaComp
+            case "notif": return ruleNotifComp
             case "flag_is": return ruleFlagComp
             case "current_teacher":
             case "next_teacher": return ruleTeacherComp
@@ -661,6 +672,7 @@ PluginPage {
             case "power": return actPowerComp
             case "volume": return actVolumeComp
             case "media": return actMediaComp
+            case "sys_notify": return actSysNotifyComp
             default: return null
         }
     }
@@ -1034,6 +1046,31 @@ PluginPage {
     }
 
     Component {
+        id: trigNotifComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                appF.text = item.p1 || ""
+                textF.text = item.p2 || ""
+            }
+            TextField {
+                id: appF
+                Layout.fillWidth: true
+                placeholderText: "应用名包含（可空 = 任意应用）"
+                onTextEdited: if (it) it.p1 = text
+            }
+            TextField {
+                id: textF
+                Layout.fillWidth: true
+                placeholderText: "内容包含（可空 = 任意内容）"
+                onTextEdited: if (it) it.p2 = text
+            }
+        }
+    }
+
+    Component {
         id: ruleMediaComp
         ColumnLayout {
             spacing: 6
@@ -1097,6 +1134,52 @@ PluginPage {
                 visible: false
                 placeholderText: "内容（按「包含」匹配，如 歌名片段 / 歌手）"
                 onTextEdited: if (it) it.p3 = text
+            }
+        }
+    }
+
+    Component {
+        id: ruleNotifComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                if (!it.p1) it.p1 = "app"
+                if (!it.p2) it.p2 = "=="
+                if (!it.p4) it.p4 = "60"
+                keyCombo.currentIndex = Math.max(0, page.notifKeys.indexOf(it.p1))
+                opCombo.currentIndex = Math.max(0, page.notifOps.indexOf(it.p2))
+                valF.text = it.p3 || ""
+                winF.text = it.p4
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                ComboBox {
+                    id: keyCombo
+                    Layout.fillWidth: true
+                    model: page.notifKeyLabels
+                    onActivated: if (it) it.p1 = page.notifKeys[index]
+                }
+                ComboBox {
+                    id: opCombo
+                    Layout.preferredWidth: 96
+                    model: page.notifOpLabels
+                    onActivated: if (it) it.p2 = page.notifOps[index]
+                }
+            }
+            TextField {
+                id: valF
+                Layout.fillWidth: true
+                placeholderText: "匹配内容"
+                onTextEdited: if (it) it.p3 = text
+            }
+            TextField {
+                id: winF
+                Layout.fillWidth: true
+                placeholderText: "最近多少秒内（默认 60）"
+                onTextEdited: if (it) it.p4 = text
             }
         }
     }
@@ -1654,6 +1737,31 @@ PluginPage {
                 Layout.fillWidth: true
                 model: page.mediaActionLabels
                 onActivated: if (it) it.p1 = page.mediaActions[index]
+            }
+        }
+    }
+
+    Component {
+        id: actSysNotifyComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                titleF.text = item.p1 || ""
+                bodyF.text = item.p2 || ""
+            }
+            TextField {
+                id: titleF
+                Layout.fillWidth: true
+                placeholderText: "通知标题"
+                onTextEdited: if (it) it.p1 = text
+            }
+            TextField {
+                id: bodyF
+                Layout.fillWidth: true
+                placeholderText: "通知内容"
+                onTextEdited: if (it) it.p2 = text
             }
         }
     }
