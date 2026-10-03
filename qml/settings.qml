@@ -2164,21 +2164,27 @@ PluginPage {
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 18
-                        spacing: 10
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        anchors.topMargin: 10
+                        anchors.bottomMargin: 10
+                        spacing: 4
 
                         RowLayout {
                             Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
                             spacing: 8
                             Text {
                                 Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
                                 typography: Typography.BodyStrong
                                 text: page.cardTitle(ruleCard.ruleObj)
                                 elide: Text.ElideRight
                             }
                             Rectangle {
-                                width: 10
-                                height: 10
+                                Layout.preferredWidth: 10
+                                Layout.preferredHeight: 10
+                                Layout.alignment: Qt.AlignVCenter
                                 radius: 5
                                 color: page.cardStateColor(ruleCard.ruleObj)
                             }
@@ -2188,24 +2194,24 @@ PluginPage {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.alignment: Qt.AlignTop
+                            Layout.bottomMargin: 26
                             typography: Typography.Caption
                             opacity: 0.75
                             text: page.cardDesc(ruleCard.ruleObj)
                             wrapMode: Text.WordWrap
                             elide: Text.ElideRight
-                            maximumLineCount: 5
+                            maximumLineCount: 4
                             verticalAlignment: Text.AlignTop
                         }
+                    }
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Item { Layout.fillWidth: true }
-                            Switch {
-                                checked: !!(ruleCard.ruleObj && ruleCard.ruleObj.enabled)
-                                onToggled: page.setRuleEnabled(index, checked)
-                            }
-                        }
+                    Switch {
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: 10
+                        anchors.bottomMargin: 6
+                        checked: !!(ruleCard.ruleObj && ruleCard.ruleObj.enabled)
+                        onToggled: page.setRuleEnabled(index, checked)
                     }
                 }
             }

@@ -14,6 +14,7 @@ from loguru import logger
 from PySide6.QtCore import Signal, Slot
 
 from automations import RuleEngine
+from widget_backend import AutomationsWidgetBackend
 import deps
 
 CFG_NAME = "com.kryon.automations.json"
@@ -58,6 +59,7 @@ class Plugin(CW2Plugin):
         self._engine: RuleEngine | None = None
         self._task: RuleEngineTask | None = None
         self._debugger = None
+        self._widget_backend: AutomationsWidgetBackend | None = None
 
     def on_load(self):
         super().on_load()
@@ -111,6 +113,19 @@ class Plugin(CW2Plugin):
             logger.info("[automations] 设置页注册成功")
         except Exception as e:
             logger.warning("[automations] 注册设置页失败: {}", e)
+
+        try:
+            self._widget_backend = AutomationsWidgetBackend(self)
+            self.api.widgets.register(
+                widget_id="com.kryon.automations.status",
+                name="自动化",
+                qml_path=str(Path(__file__).parent / "qml" / "widget.qml"),
+                backend_obj=self._widget_backend,
+                default_settings={},
+            )
+            logger.info("[automations] 小组件注册成功")
+        except Exception as e:
+            logger.warning("[automations] 注册小组件失败: {}", e)
 
         if self._engine is not None:
             try:
