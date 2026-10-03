@@ -30,6 +30,7 @@ from loguru import logger
 
 import app_index
 import day_status
+import media
 import win_settings
 
 # ── 触发器类型（顺序 = QML 下拉顺序）──────────────────────────
@@ -71,10 +72,11 @@ R_FLAG_IS = "flag_is"             # 读标志
 R_CURRENT_TEACHER = "current_teacher"  # 当前教师是
 R_NEXT_TEACHER = "next_teacher"        # 下节课教师是
 R_SYS_SETTING = "sys_setting"          # 系统设置：主题/电源/电池/网络（p1 键 p2 比较 p3 值）
+R_MEDIA = "media"                      # 媒体状态：是否在播/曲名/歌手（p1 键 p2 比较 p3 值）
 RULE_TYPES = (R_ALWAYS_TRUE, R_ALWAYS_FALSE, R_TODAY_IS, R_LATER_THAN,
               R_CURRENT_SUBJECT, R_NEXT_SUBJECT, R_PREV_SUBJECT, R_CURRENT_STATUS,
               R_FOREGROUND_WINDOW, R_FLAG_IS, R_CURRENT_TEACHER, R_NEXT_TEACHER,
-              R_SYS_SETTING)
+              R_SYS_SETTING, R_MEDIA)
 
 # ── 行动类型（顺序 = QML 下拉顺序）────────────────────────────
 A_RUN = "run"                     # 运行命令/程序/网址
@@ -91,9 +93,10 @@ A_OPEN_SETTINGS = "open_settings" # 打开 Windows 系统设置页（ms-settings
 A_SET_THEME = "set_theme"         # 切换 Windows 深/浅色主题（可恢复）
 A_POWER = "power"                 # 电源：关机/重启/注销/睡眠/休眠（p1 模式）
 A_VOLUME = "volume"               # 音量：增大/减小/静音/设为某值（p1 模式 p2 值）
+A_MEDIA = "media"                 # 媒体控制：播放/暂停/上下首/停止（p1 命令）
 ACTION_TYPES = (A_RUN, A_LAUNCH, A_CLOSE_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
-                A_POWER, A_VOLUME)
+                A_POWER, A_VOLUME, A_MEDIA)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -485,6 +488,8 @@ class RuleEngine(QObject):
             elif atype == A_VOLUME:
                 win_settings.volume_action(str(action.get("p1") or ""),
                                            str(action.get("p2") or ""))
+            elif atype == A_MEDIA:
+                media.action(str(action.get("p1") or ""))
             elif atype == A_NOTIFY:
                 self._do_notify(action)
             elif atype == A_BROADCAST:
@@ -822,6 +827,8 @@ class RuleEngine(QObject):
                 v = self._teacher_match(self._next_subject(), p1)
             elif t == R_SYS_SETTING:
                 v = win_settings.rule_match(p1, p2, p3)
+            elif t == R_MEDIA:
+                v = media.rule_match(p1, p2, p3)
             else:
                 v = False
         except Exception:
