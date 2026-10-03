@@ -27,10 +27,42 @@ def vendor_path() -> Path:
 
 
 def ensure_sys_path() -> None:
-    """把 vendor/ 挂进 sys.path（幂等）。"""
+    """把 vendor/ 挂进 sys.path（幂等），并让导入缓存失效。"""
+    import importlib
     p = str(VENDOR_DIR)
     if VENDOR_DIR.is_dir() and p not in sys.path:
         sys.path.insert(0, p)
+    try:
+        importlib.invalidate_caches()          # 目录列表可能被缓存过，必须失效
+    except Exception:                          # noqa: BLE001
+        pass
+
+
+def _ensure_init_py() -> int:
+    """给解包出来的顶层包补 __init__.py。
+
+    主程序是 PyInstaller 打包的，它的冻结导入器对"命名空间包"（目录里没有
+    __init__.py）支持不佳 —— 像 winrt 这种正是命名空间包，会报 No module named。
+    补一个空 __init__.py 变成常规包即可，对普通包无副作用。
+    """
+    made = 0
+    if not VENDOR_DIR.is_dir():
+        return made
+    for d in VENDOR_DIR.iterdir():
+        if not d.is_dir() or d.name.endswith(".dist-info") or d.name.startswith("_"):
+            continue
+        if d.name == "__pycache__":
+            continue
+        init = d / "__init__.py"
+        if not init.exists():
+            try:
+                init.write_text("", encoding="utf-8")
+                made += 1
+            except Exception:                  # noqa: BLE001
+                pass
+    if made:
+        logger.info("[deps] 补了 {} 个包的 __init__.py（冻结环境兼容）", made)
+    return made
 
 
 def bundled_wheels() -> list:
@@ -77,6 +109,7 @@ def ensure(progress=None) -> dict:
                 pass
         if is_installed(whl.name) or install_wheel(whl):
             done += 1
+    _ensure_init_py()
     ensure_sys_path()
     if progress:
         try:

@@ -39,7 +39,40 @@ def _load() -> bool:
     except Exception as e:                               # noqa: BLE001
         _IMPORT_ERR = e
         logger.debug("[media] winrt 尚未可用: {}", e)
+        _diag_once()
         return False
+
+
+_DIAG_DONE = False
+
+
+def _diag_once() -> None:
+    """只在第一次失败时打一次详细诊断，方便定位（冻结环境 / sys.path / 文件是否在）。"""
+    global _DIAG_DONE
+    if _DIAG_DONE:
+        return
+    _DIAG_DONE = True
+    try:
+        import importlib
+        import os
+        import sys
+        from pathlib import Path
+        v = Path(__file__).resolve().parent / "vendor"
+        logger.warning("[media] 诊断: frozen={} | vendor={} | vendor在sys.path={} | "
+                       "vendor/winrt={} | winrt/__init__.py={} | find_spec={}",
+                       getattr(sys, "frozen", False), v, str(v) in sys.path,
+                       (v / "winrt").is_dir(), (v / "winrt" / "__init__.py").exists(),
+                       _safe_find("winrt"))
+    except Exception as e:                               # noqa: BLE001
+        logger.warning("[media] 诊断本身失败: {}", e)
+
+
+def _safe_find(name):
+    try:
+        import importlib.util
+        return importlib.util.find_spec(name)
+    except Exception as e:                               # noqa: BLE001
+        return f"err:{e}"
 
 
 def available() -> bool:
