@@ -265,7 +265,8 @@ class RuleEngine(QObject):
         """
         if self._ext_known:
             return
-        self._ext = {"rollcall": self._rollcall() is not None}
+        self._ext = {"rollcall": self._rollcall() is not None,
+                     "sys_notify": True}
         self._ext_known = True
         self.save()
         logger.info("[automations] 扩展功能默认值: {}", self._ext)

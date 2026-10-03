@@ -212,6 +212,23 @@ class Plugin(CW2Plugin):
         except Exception:
             return False
 
+    @Slot(result=bool)
+    def sysNotifyExtEnabled(self) -> bool:
+        try:
+            if self._engine is None:
+                return True
+            self._engine.ensure_ext_defaults()
+            return bool(self._engine.ext_enabled("sys_notify"))
+        except Exception:
+            return True
+
+    @Slot(bool, result=bool)
+    def setSysNotifyExtEnabled(self, on: bool) -> bool:
+        try:
+            return bool(self._engine.set_ext("sys_notify", on)) if self._engine else False
+        except Exception:
+            return False
+
     @Slot(result=str)
     def getRulesJson(self) -> str:
         rules = self._engine.get_rules() if self._engine else []

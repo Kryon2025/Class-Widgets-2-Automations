@@ -22,6 +22,22 @@ PluginPage {
         spacing: 8
 
         Switch {
+            id: sysNotifySwitch
+            text: "系统通知"
+            checked: page.sysNotifyExt
+            enabled: backend && backend.setSysNotifyExtEnabled
+            Component.onCompleted: if (backend && backend.sysNotifyExtEnabled)
+                                       page.sysNotifyExt = backend.sysNotifyExtEnabled()
+            onToggled: {
+                page.sysNotifyExt = checked
+                if (backend && backend.setSysNotifyExtEnabled)
+                    backend.setSysNotifyExtEnabled(checked)
+            }
+            ToolTip.visible: hovered
+            ToolTip.text: "在三个模块中显示「发系统通知 / 收到系统通知时 / 系统通知条件」"
+        }
+
+        Switch {
             id: rollcallSwitch
             text: "随机点名联动"
             checked: page.rollcallExt
@@ -46,18 +62,21 @@ PluginPage {
     }
 
     // ── 类型清单（顺序 = 后端常量表）────────────────────────
-    // 扩展功能：随机点名联动（关闭时三个模块都不出现随机点名项）
-    property bool rollcallExt: false
+    // 扩展功能开关：关闭时三个模块都不出现对应项
+    property bool rollcallExt: false      // 随机点名联动（依赖 com.rollcall）
+    property bool sysNotifyExt: true      // 系统通知（发系统通知 / 收到通知时 / 通知条件）
 
     readonly property var trigTypes: {
         var a = ["time", "interval", "class_start", "class_end", "break_start",
-            "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot", "notif_new"]
+            "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot"]
+        if (page.sysNotifyExt) a = a.concat(["notif_new"])
         if (page.rollcallExt) a = a.concat(["rollcall_start", "rollcall_picked"])
         return a
     }
     readonly property var trigLabels: {
         var a = ["定时", "间隔触发", "上课时", "下课时", "课间休息时",
-            "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后", "收到系统通知时"]
+            "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后"]
+        if (page.sysNotifyExt) a = a.concat(["收到系统通知时"])
         if (page.rollcallExt) a = a.concat(["随机点名开始", "随机点名出结果后"])
         return a
     }
@@ -65,7 +84,8 @@ PluginPage {
     readonly property var ruleTypes: {
         var a = ["always_true", "always_false", "today_is", "later_than",
             "current_subject", "next_subject", "prev_subject", "current_status",
-            "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media", "notif"]
+            "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media"]
+        if (page.sysNotifyExt) a = a.concat(["notif"])
         if (page.rollcallExt) a = a.concat(["rollcall_config"])
         return a
     }
@@ -94,21 +114,24 @@ PluginPage {
     readonly property var ruleLabels: {
         var a = ["总是为真", "总是为假", "今天是…", "时间晚于…", "当前科目是",
             "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
-            "当前教师是", "下节课教师是", "系统设置…", "媒体状态", "系统通知…"]
+            "当前教师是", "下节课教师是", "系统设置…", "媒体状态"]
+        if (page.sysNotifyExt) a = a.concat(["系统通知…"])
         if (page.rollcallExt) a = a.concat(["随机点名配置…"])
         return a
     }
 
     readonly property var actTypes: {
         var a = ["run", "notify", "wait", "broadcast", "set_flag",
-            "set_config", "lock", "restart", "open_settings", "set_theme", "power", "volume", "media", "app", "sys_notify"]
+            "set_config", "lock", "restart", "open_settings", "set_theme", "power", "volume", "media", "app"]
+        if (page.sysNotifyExt) a = a.concat(["sys_notify"])
         if (page.rollcallExt) a = a.concat(["rollcall_roll", "rollcall_set", "rollcall_close"])
         return a
     }
     readonly property var actLabels: {
         var a = ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
             "设置配置项", "锁定配置项", "重启主程序", "打开系统设置页",
-            "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理", "发系统通知"]
+            "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理"]
+        if (page.sysNotifyExt) a = a.concat(["发系统通知"])
         if (page.rollcallExt) a = a.concat(["触发随机点名", "设置随机点名", "关闭点名窗口"])
         return a
     }
