@@ -89,6 +89,7 @@ Widget {
             Layout.alignment: Qt.AlignVCenter
             strokeWidth: 3
             backgroundColor: Qt.rgba(0.5, 0.5, 0.5, 0.22)
+            primaryColor: "#2eaa76"
             // 执行中显示进度；空闲（编辑态预览）为满环
             value: root.stepTotal > 0 ? Math.min(1, root.stepIndex / root.stepTotal) : 1
         }
