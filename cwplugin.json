@@ -1,10 +1,10 @@
 {
   "id": "com.kryon.automations",
   "name": "Kryon的自动化",
-  "version": "1.1.1",
+  "version": "2.0.0",
   "api_version": ">=0.6.0",
   "entry": "main.py",
-  "author": "松峰",
+  "author": "Kryon",
   "description": "为ClassWidgets2提供自动化功能",
   "url": "https://github.com/Kryon2025/Class-Widgets-2-Automations",
   "readme": "README.md"
