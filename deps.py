@@ -65,6 +65,33 @@ def _ensure_init_py() -> int:
     return made
 
 
+def _fixup_ext_suffixes() -> int:
+    """把带 ABI 标记的扩展模块(*.cp3XX-win_amd64.pyd)补一份裸 *.pyd。
+
+    冻结版主程序的导入器对 ABI 标记后缀不一定认（如 pysqlite3 里的
+    _sqlite3.cp312-win_amd64.pyd），补一份裸 .pyd 最保险（winrt/winsdk 用的就是裸名）。
+    """
+    made = 0
+    if not VENDOR_DIR.is_dir():
+        return made
+    import shutil
+    for pyd in VENDOR_DIR.rglob("*.pyd"):
+        stem = pyd.stem                              # 例：_sqlite3.cp312-win_amd64
+        if "." not in stem:
+            continue
+        target = pyd.with_name(stem.split(".", 1)[0] + ".pyd")   # 例：_sqlite3.pyd
+        if target.exists():
+            continue
+        try:
+            shutil.copy2(pyd, target)
+            made += 1
+        except Exception:                            # noqa: BLE001
+            pass
+    if made:
+        logger.info("[deps] 补了 {} 个裸名扩展模块（冻结环境兼容）", made)
+    return made
+
+
 def bundled_wheels() -> list:
     """随插件分发的 wheel 列表。"""
     if not VENDOR_DIR.is_dir():
@@ -110,6 +137,7 @@ def ensure(progress=None) -> dict:
         if is_installed(whl.name) or install_wheel(whl):
             done += 1
     _ensure_init_py()
+    _fixup_ext_suffixes()
     ensure_sys_path()
     if progress:
         try:

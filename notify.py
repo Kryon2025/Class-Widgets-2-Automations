@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 import time
 import xml.etree.ElementTree as ET
 
@@ -33,17 +32,49 @@ _CACHE_TTL = 1.0
 _name_map = {"t": 0.0, "m": {}}      # AUMID/可执行名(小写) → 友好显示名（来自 app_index）
 
 
+_SQLITE = None                       # 标准库 sqlite3 或 vendor 里的 pysqlite3
+
+
+def _sqlite_mod():
+    """惰性拿 sqlite 模块。
+
+    冻结版主程序**没打包 sqlite3**，而 automations→notify 是顶层导入（发生在
+    deps.ensure() 之前），一旦顶层 import sqlite3 失败，**整个插件都加载不了**。
+    所以这里惰性导入：先试标准库，再退回 vendor 里的 pysqlite3（自带 SQLite）。
+    """
+    global _SQLITE
+    if _SQLITE is not None:
+        return _SQLITE
+    try:
+        import deps
+        deps.ensure_sys_path()
+    except Exception:                                # noqa: BLE001
+        pass
+    for name in ("sqlite3", "pysqlite3"):
+        try:
+            _SQLITE = __import__(name)
+            logger.info("[notify] sqlite 模块: {} ✓", name)
+            return _SQLITE
+        except Exception:                            # noqa: BLE001
+            continue
+    logger.debug("[notify] sqlite3 / pysqlite3 均不可用（通知读取将不可用）")
+    return None
+
+
 def _db_files() -> list:
     # Win10/多数 Win11 用 wpndatabase.db，部分新 Win11 用 appdb.dat，都试。
     return [os.path.join(_DB_DIR, n) for n in ("appdb.dat", "wpndatabase.db")]
 
 
 def _open():
+    sqlite = _sqlite_mod()
+    if sqlite is None:
+        return None
     for p in _db_files():
         if not os.path.exists(p):
             continue
         try:
-            con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=2)
+            con = sqlite.connect(f"file:{p}?mode=ro", uri=True, timeout=2)
             con.execute("PRAGMA query_only=1")
             return con
         except Exception as e:                       # noqa: BLE001
@@ -53,11 +84,12 @@ def _open():
 
 def available() -> bool:
     global _avail
-    if _avail is None:
-        con = _open()
-        _avail = con is not None
-        if con:
-            con.close()
+    if _avail:
+        return True
+    con = _open()
+    _avail = con is not None
+    if con:
+        con.close()
     return _avail
 
 
@@ -76,7 +108,7 @@ def _query_recent(limit: int = 50) -> list:
     if con is None:
         return []
     try:
-        con.row_factory = sqlite3.Row
+        con.row_factory = _sqlite_mod().Row
         handlers = {}
         try:
             for row in con.execute('SELECT "RecordId", "PrimaryId" FROM NotificationHandler'):
