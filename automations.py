@@ -30,6 +30,7 @@ from loguru import logger
 
 import app_index
 import day_status
+import win_settings
 
 # ── 触发器类型（顺序 = QML 下拉顺序）──────────────────────────
 T_TIME = "time"                 # 定时（HH:MM + 星期）
@@ -81,8 +82,9 @@ A_LOCK = "lock"                   # 锁定配置项
 A_RESTART = "restart"             # 重启主程序
 A_LAUNCH = "launch_app"           # 打开应用（已安装应用 / UWP / 指定 exe）
 A_CLOSE_APP = "close_app"         # 关闭应用（按进程名结束，见 _do_close_app）
+A_OPEN_SETTINGS = "open_settings" # 打开 Windows 系统设置页（ms-settings:）
 ACTION_TYPES = (A_RUN, A_LAUNCH, A_CLOSE_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
-                A_SET_CONFIG, A_LOCK, A_RESTART)
+                A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -444,6 +446,8 @@ class RuleEngine(QObject):
                 self._do_launch(action)
             elif atype == A_CLOSE_APP:
                 self._do_close_app(action)
+            elif atype == A_OPEN_SETTINGS:
+                self._do_open_settings(action)
             elif atype == A_NOTIFY:
                 self._do_notify(action)
             elif atype == A_BROADCAST:
@@ -499,6 +503,10 @@ class RuleEngine(QObject):
     def _do_launch(self, a: dict) -> None:
         """打开应用：p1=目标（.lnk / shell:AppsFolder… / .exe / 网址），p2=参数，p3=工作目录。"""
         app_index.launch(str(a.get("p1") or ""), str(a.get("p2") or ""), str(a.get("p3") or ""))
+
+    def _do_open_settings(self, a: dict) -> None:
+        """打开 Windows 系统设置页：p1=页 id（如 colors / display / bluetooth）。"""
+        win_settings.open_page(str(a.get("p1") or ""))
 
     def set_notification_provider(self, provider) -> None:
         """接收插件在 on_load 里注册好的通知 provider。

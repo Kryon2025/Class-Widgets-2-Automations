@@ -37,9 +37,20 @@ PluginPage {
         "当前教师是", "下节课教师是"]
 
     property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
-        "set_config", "lock", "restart", "launch_app", "close_app"]
+        "set_config", "lock", "restart", "launch_app", "close_app", "open_settings"]
     property var actLabels: ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
-        "设置配置项", "锁定配置项", "重启主程序", "打开应用", "关闭应用"]
+        "设置配置项", "锁定配置项", "重启主程序", "打开应用", "关闭应用", "打开系统设置页"]
+
+    // 系统设置页（值 = ms-settings: 后面那段，与 win_settings.SETTINGS_PAGES 一致）
+    property var settingsPages: ["personalization", "colors", "themes", "display",
+        "sound", "notifications", "powersleep", "batterysaver", "network",
+        "network-wifi", "bluetooth", "datetime", "language", "appsfeatures",
+        "defaultapps", "windowsupdate", "privacy", "gaming-gamebar",
+        "easeofaccess", "about"]
+    property var settingsPageLabels: ["个性化", "颜色", "主题", "显示", "声音",
+        "通知", "电源和睡眠", "电池", "网络状态", "WLAN", "蓝牙", "日期和时间",
+        "语言", "应用", "默认应用", "Windows 更新", "隐私", "游戏栏",
+        "辅助功能", "关于"]
 
     // ── 下拉选项（值数组与后端约定一致）────────────────────
     property var statusLabels: ["上课", "课间休息", "放学后", "活动", "预备"]
@@ -410,6 +421,7 @@ PluginPage {
             case "set_flag": return t.p1 || ""
             case "set_config": return page.keyLabelOf(t.p1)
             case "lock": return page.keyLabelOf(t.p1) + (t.p2 === "unlock" ? "（解锁）" : "（锁定）")
+            case "open_settings": return page.settingsPageLabels[Math.max(0, page.settingsPages.indexOf(t.p1))]
             default: return ""
         }
     }
@@ -590,6 +602,7 @@ PluginPage {
             case "lock": return actLockComp
             case "launch_app": return actLaunchComp
             case "close_app": return actCloseComp
+            case "open_settings": return actOpenSettingsComp
             default: return null
         }
     }
@@ -1333,6 +1346,43 @@ PluginPage {
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
+            }
+        }
+    }
+
+    Component {
+        id: actOpenSettingsComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+
+            function load(item) {
+                it = item
+                var t = item.p1 || "personalization"
+                var i = page.settingsPages.indexOf(t)
+                pageCombo.currentIndex = i >= 0 ? i : 0
+                manualF.text = t
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                ComboBox {
+                    id: pageCombo
+                    Layout.fillWidth: true
+                    model: page.settingsPageLabels
+                    onActivated: {
+                        if (!it) return
+                        it.p1 = page.settingsPages[index]
+                        manualF.text = it.p1
+                    }
+                }
+            }
+            TextField {
+                id: manualF
+                Layout.fillWidth: true
+                placeholderText: "或手输页 id（如 colors / display / bluetooth）"
+                onTextEdited: if (it) it.p1 = text
             }
         }
     }
