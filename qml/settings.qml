@@ -2622,10 +2622,10 @@ PluginPage {
                         width: sheet.width - 44 - 14
                         spacing: 12
 
-                        InfoBar {
+                        SettingCard {
                             Layout.fillWidth: true
-                            severity: Severity.Info
-                            text: "未开启「恢复」的自动化只会执行一次，执行完毕后会自动停用。需要反复触发请开启「恢复」。"
+                            title: qsTr("提示")
+                            description: qsTr("未开启「恢复」的自动化只会执行一次，执行完毕后会自动停用。需要反复触发请开启「恢复」。")
                         }
 
                         Frame {
