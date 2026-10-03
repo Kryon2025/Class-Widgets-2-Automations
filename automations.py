@@ -49,9 +49,12 @@ T_ALARM = "alarm"               # 闹钟（到点自己响铃）
 T_SYS_CHANGE = "sys_change"       # 系统设置变化时（p1 键，p2 可选「变为」）
 T_BOOT = "boot"                   # 开机后（p1 = 开机多少秒内算"刚开机"，默认 120）
 T_NOTIF = "notif_new"             # 收到系统通知时（p1 应用名含，p2 内容含，均可空）
+# 随机点名联动（扩展功能，需 com.rollcall 插件）：开始滚动 / 出结果后
+T_ROLLCALL_START = "rollcall_start"
+T_ROLLCALL_PICKED = "rollcall_picked"
 TRIGGER_TYPES = (T_ALARM, T_TIME, T_INTERVAL, T_CLASS_START, T_CLASS_END, T_BREAK_START,
                  T_AFTER_SCHOOL, T_STATUS_CHANGE, T_BEFORE_CLASS, T_APP_START, T_SIGNAL,
-                 T_SYS_CHANGE, T_BOOT, T_NOTIF)
+                 T_SYS_CHANGE, T_BOOT, T_NOTIF, T_ROLLCALL_START, T_ROLLCALL_PICKED)
 
 # 触发器逆事件（用于恢复）
 TRIGGER_INVERSE = {
@@ -272,6 +275,7 @@ class RuleEngine(QObject):
 
     def update(self) -> None:
         now = datetime.datetime.now()
+        self._ensure_rollcall_hook()
         try:
             for rule in self._rules:
                 if not rule.get("enabled"):
@@ -288,6 +292,31 @@ class RuleEngine(QObject):
         self._revert_scan()
 
     # ── 触发器检测 ──────────────────────────────────────────
+
+    # ── 随机点名信号挂接 ────────────────────────────────────
+
+    def _ensure_rollcall_hook(self) -> None:
+        """把点名插件的信号接到引擎上。插件晚到或重装时自动重挂。"""
+        rc = self._rollcall()
+        if rc is None:
+            self._rc_hooked = None
+            return
+        if getattr(self, "_rc_hooked", None) is rc:
+            return
+        try:
+            rc.rollRequested.connect(self._on_rollcall_start)
+            rc.picked.connect(self._on_rollcall_picked)
+        except Exception as e:
+            logger.warning("[automations] 挂接随机点名信号失败: {}", e)
+            return
+        self._rc_hooked = rc
+        logger.info("[automations] 已挂接随机点名信号")
+
+    def _on_rollcall_start(self, _count=None) -> None:
+        self._rc_start_seq = getattr(self, "_rc_start_seq", 0) + 1
+
+    def _on_rollcall_picked(self, _names=None) -> None:
+        self._rc_picked_seq = getattr(self, "_rc_picked_seq", 0) + 1
 
     def _check_trigger(self, rule: dict, trig: dict, now: datetime.datetime) -> bool:
         t = trig.get("type")
@@ -307,6 +336,18 @@ class RuleEngine(QObject):
                 return False
             trig["_fp"] = fp
             return True
+        if t == T_ROLLCALL_START:
+            seq = getattr(self, "_rc_start_seq", 0)
+            if seq and trig.get("_rc_seq") != seq:
+                trig["_rc_seq"] = seq
+                return True
+            return False
+        if t == T_ROLLCALL_PICKED:
+            seq = getattr(self, "_rc_picked_seq", 0)
+            if seq and trig.get("_rcp_seq") != seq:
+                trig["_rcp_seq"] = seq
+                return True
+            return False
         if t == T_INTERVAL:
             secs = max(1, int(float(trig.get("p1") or 60)))
             last = float(trig.get("_lt") or 0)

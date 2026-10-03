@@ -25,9 +25,11 @@ PluginPage {
 
     // ── 类型清单（顺序 = 后端常量表）────────────────────────
     property var trigTypes: ["time", "interval", "class_start", "class_end", "break_start",
-        "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot", "notif_new" ]
+        "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot", "notif_new",
+        "rollcall_start", "rollcall_picked" ]
     property var trigLabels: ["定时", "间隔触发", "上课时", "下课时", "课间休息时",
-        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后", "收到系统通知时" ]
+        "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后", "收到系统通知时",
+        "随机点名开始", "随机点名出结果后" ]
 
     property var ruleTypes: ["always_true", "always_false", "today_is", "later_than",
         "current_subject", "next_subject", "prev_subject", "current_status",
@@ -532,6 +534,13 @@ PluginPage {
                 + (t.p1 === "set" ? (" " + (t.p2 || "50") + "%") : "")
             case "media": return "媒体控制：" + page.mediaActionLabels[Math.max(0, page.mediaActions.indexOf(t.p1))]
             case "sys_notify": return "发系统通知：" + (t.p1 || "")
+            case "rollcall_start": return "随机点名开始"
+            case "rollcall_picked": return "随机点名出结果后"
+            case "rollcall_roll": return "随机点名 " + (t.p1 || "1") + " 人"
+            case "rollcall_set":
+            case "rollcall_config": return page.labelOf(page.rollcallKeys, page.rollcallLabels, t.p1)
+                + " = " + (t.p2 || "")
+            case "rollcall_close": return "关闭点名窗口"
             default: return ""
         }
     }
@@ -686,6 +695,8 @@ PluginPage {
             case "before_class": return trigBeforeComp
             case "signal": return trigSignalComp
             case "alarm": return trigAlarmComp
+            case "rollcall_start": return trigRollcallStartComp
+            case "rollcall_picked": return trigRollcallPickedComp
             default: return null
         }
     }
@@ -755,6 +766,26 @@ PluginPage {
     }
 
     // ══════════════ 触发器字段组件 ══════════════
+    Component {
+        id: trigRollcallStartComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            function load(item) { it = item }
+            Text { text: "随机点名开始滚动时（无需参数）" }
+        }
+    }
+
+    Component {
+        id: trigRollcallPickedComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            function load(item) { it = item }
+            Text { text: "随机点名出结果后（无需参数）" }
+        }
+    }
+
     Component {
         id: trigTimeComp
         ColumnLayout {
