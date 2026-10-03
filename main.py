@@ -177,6 +177,15 @@ class Plugin(CW2Plugin):
         rules = self._engine.get_rules() if self._engine else []
         return json.dumps(rules, ensure_ascii=False)
 
+    @Slot(result=str)
+    def activeRuleUidsJson(self) -> str:
+        """当前已生效（运行中）的自动化 uid 列表，供设置页卡片状态点使用。"""
+        try:
+            uids = list(getattr(self._engine, "_active", {}).keys()) if self._engine else []
+        except Exception:
+            uids = []
+        return json.dumps(uids, ensure_ascii=False)
+
     @Slot(str, result=bool)
     def saveRulesJson(self, rules_json: str) -> bool:
         if self._engine is None:

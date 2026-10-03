@@ -241,6 +241,8 @@ PluginPage {
     property bool draftIsNew: false
     property int draftIndex: -1
     property bool closing: false
+    // 卡片状态点数据：引擎当前「已生效」的 uid 列表（红=停用 / 绿=运行中 / 蓝=待命）
+    property var activeUids: []
 
     // 页面构造期不做任何取数：不启动「加载后自动枚举应用」的定时器，
     // 也不在构造中调用 Python 槽。等宿主把 backend 绑定
@@ -311,6 +313,39 @@ PluginPage {
         statusText = ok ? "已保存（共 " + page.rules.length + " 条自动化）" : "保存失败（详见主程序日志）"
         if (ok) saveTimer.restart()
         return ok
+    }
+
+    // ── 卡片：右下角开关 & 右上角状态点 ────────────────────────
+    function setRuleEnabled(i, on) {
+        if (i < 0 || i >= page.rules.length) return
+        // 用副本替换整个数组：让卡片的开关 / 状态点绑定重新求值
+        var list = page.rules.slice()
+        var item = page.cloneRule(list[i]) || {}
+        item.enabled = !!on
+        list[i] = item
+        page.rules = list
+        page.save()
+    }
+
+    function cardStateColor(ruleObj) {
+        if (!ruleObj) return "#9e9e9e"
+        if (!ruleObj.enabled) return "#e53935"            // 红：已停用
+        var uids = page.activeUids || []
+        for (var i = 0; i < uids.length; i++)
+            if (uids[i] === ruleObj.uid) return "#43a047" // 绿：运行中（正在生效）
+        return "#1e88e5"                                  // 蓝：待命（已启用、未生效）
+    }
+
+    // 轮询引擎「当前已生效」的自动化，驱动卡片绿点
+    Timer {
+        id: activePoll
+        interval: 1000
+        repeat: true
+        running: !!backend
+        onTriggered: {
+            try { page.activeUids = JSON.parse(backend.activeRuleUidsJson() || "[]") }
+            catch (e) { page.activeUids = [] }
+        }
     }
 
     // ── 编辑页开合（草稿式：改动先落在草稿上）────────────────
@@ -2135,18 +2170,17 @@ PluginPage {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
-                            Rectangle {
-                                width: 9
-                                height: 9
-                                radius: 5
-                                opacity: (ruleCard.ruleObj && ruleCard.ruleObj.enabled) ? 1 : 0.35
-                                color: Utils.primaryColor
-                            }
                             Text {
                                 Layout.fillWidth: true
                                 typography: Typography.BodyStrong
                                 text: page.cardTitle(ruleCard.ruleObj)
                                 elide: Text.ElideRight
+                            }
+                            Rectangle {
+                                width: 10
+                                height: 10
+                                radius: 5
+                                color: page.cardStateColor(ruleCard.ruleObj)
                             }
                         }
 
@@ -2161,6 +2195,16 @@ PluginPage {
                             elide: Text.ElideRight
                             maximumLineCount: 5
                             verticalAlignment: Text.AlignTop
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Item { Layout.fillWidth: true }
+                            Switch {
+                                checked: !!(ruleCard.ruleObj && ruleCard.ruleObj.enabled)
+                                onToggled: page.setRuleEnabled(index, checked)
+                            }
                         }
                     }
                 }
