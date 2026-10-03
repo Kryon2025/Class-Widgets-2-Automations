@@ -420,6 +420,20 @@ PluginPage {
     }
 
     // 轮询引擎「当前已生效」的自动化，驱动卡片绿点
+    // 引擎在后台自动停用某条自动化时，只重载规则列表，不碰编辑中的草稿
+    Connections {
+        target: backend
+        function onRulesChanged() {
+            if (!backend)
+                return
+            try {
+                page.rules = JSON.parse(backend.getRulesJson() || "[]")
+            } catch (e) {
+                // 解析失败就保持原样
+            }
+        }
+    }
+
     Timer {
         id: activePoll
         interval: 1000

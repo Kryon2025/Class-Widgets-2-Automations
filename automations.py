@@ -198,6 +198,7 @@ class RuleEngine(QObject):
         self._flags: dict[str, str] = {}
         self._exec = None          # 当前执行态（小组件展示用）
         self._ext: dict = {}       # 扩展功能开关（如 rollcall 联动）
+        self.on_rules_changed = None   # 插件注入：规则被后台改动时通知界面刷新
         self._ext_known = False    # 文件里是否已有 ext（有则不再自动改写）
         self._active: dict[str, dict] = {}   # uid -> {"keys": {path: orig}, "rule": rule}
         self._flag_originals: dict[str, Optional[str]] = {}
@@ -579,6 +580,12 @@ class RuleEngine(QObject):
             except Exception as e:
                 logger.warning("[automations] 自动停用保存失败: {}", e)
             logger.info("[automations] 无恢复：执行完毕，已自动停用「{}」", rule.get("name"))
+            cb = getattr(self, "on_rules_changed", None)
+            if callable(cb):
+                try:
+                    cb()
+                except Exception as e:
+                    logger.warning("[automations] 通知界面刷新失败: {}", e)
 
     def exec_snapshot(self):
         """返回当前（或刚刚结束的）执行态；无则 None。"""

@@ -53,6 +53,7 @@ class Plugin(CW2Plugin):
 
     # 依赖安装进度（供设置页进度条用）：done, total, name
     depsProgress = Signal(int, int, str)
+    rulesChanged = Signal()          # 引擎在后台改动了规则（如自动停用）
 
     def __init__(self, api: PluginAPI):
         super().__init__(api)
@@ -88,6 +89,8 @@ class Plugin(CW2Plugin):
         storage = _app_root() / "configs" / "plugins" / CFG_NAME
         try:
             self._engine = RuleEngine(self.api, storage)
+            # 自动停用发生在引擎内部，界面不知道；接个回调让设置页刷新
+            self._engine.on_rules_changed = self.rulesChanged.emit
             if provider is not None:
                 self._engine.set_notification_provider(provider)
             self._engine.load()
