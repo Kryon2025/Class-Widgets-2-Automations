@@ -31,7 +31,8 @@ PluginPage {
 
     property var ruleTypes: ["always_true", "always_false", "today_is", "later_than",
         "current_subject", "next_subject", "prev_subject", "current_status",
-        "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media", "notif" ]
+        "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media", "notif",
+        "rollcall_config" ]
 
     // 系统设置条件（与 win_settings.SYS_RULE_KEYS 一致）
     property var sysKeys: ["theme_apps", "theme_system", "ac_power", "battery_percent", "network"]
@@ -56,7 +57,8 @@ PluginPage {
     property var sysOpLabels: ["是", "不是", "大于", "大于等于", "小于", "小于等于"]
     property var ruleLabels: ["总是为真", "总是为假", "今天是…", "时间晚于…", "当前科目是",
         "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
-        "当前教师是", "下节课教师是", "系统设置…", "媒体状态", "系统通知…" ]
+        "当前教师是", "下节课教师是", "系统设置…", "媒体状态", "系统通知…",
+        "随机点名配置…" ]
 
     property var actTypes: ["run", "notify", "wait", "broadcast", "set_flag",
         "set_config", "lock", "restart",   "open_settings", "set_theme", "power", "volume", "media", "app", "sys_notify",
@@ -702,6 +704,7 @@ PluginPage {
             case "flag_is": return ruleFlagComp
             case "current_teacher":
             case "next_teacher": return ruleTeacherComp
+            case "rollcall_config": return ruleRollcallComp
             default: return null
         }
     }
@@ -1382,6 +1385,57 @@ PluginPage {
                 Layout.preferredWidth: 110
                 model: page.winStateLabels
                 onActivated: if (it) it.p3 = page.winStateValues[index]
+            }
+        }
+    }
+
+    Component {
+        id: ruleRollcallComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            property bool loading: false
+
+            function keyOf() { return page.rollcallKeys[rrKey.currentIndex] || page.rollcallKeys[0] }
+            function isBoolKey() { return page.rollcallIsBool(keyOf()) }
+
+            function write() {
+                if (loading || !it)
+                    return
+                it.p1 = keyOf()
+                it.p2 = isBoolKey() ? (rrBool.checked ? "true" : "false") : String(Math.round(rrNum.value))
+            }
+
+            function load(item) {
+                it = item
+                loading = true
+                var idx = page.rollcallKeys.indexOf(item.p1)
+                rrKey.currentIndex = idx >= 0 ? idx : 0
+                var raw = String(item.p2 === undefined || item.p2 === null ? "" : item.p2).trim().toLowerCase()
+                rrBool.checked = ["1", "true", "on", "yes", "是", "开", "开启"].indexOf(raw) >= 0
+                rrNum.value = parseInt(raw) || 0
+                loading = false
+            }
+
+            Text { text: "随机点名" }
+            ComboBox {
+                id: rrKey
+                Layout.preferredWidth: 180
+                model: page.rollcallLabels
+                onActivated: write()
+            }
+            Text { text: "是" }
+            Switch {
+                id: rrBool
+                visible: isBoolKey()
+                onToggled: write()
+            }
+            SpinBox {
+                id: rrNum
+                Layout.preferredWidth: 110
+                from: 0; to: 3600; stepSize: 1; editable: true
+                visible: !isBoolKey()
+                onValueChanged: write()
             }
         }
     }
