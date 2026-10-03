@@ -54,8 +54,11 @@ Widget {
         if (!root.ex || !root.ex.steps)
             return ""
         var cn = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
+        // 逐条显示：执行到第几步就显示到第几步（跑完则全列）
+        var upto = root.ex.done ? root.ex.steps.length
+                                : Math.min(root.ex.steps.length, root.stepIndex + 1)
         var out = []
-        for (var i = 0; i < root.ex.steps.length; i++)
+        for (var i = 0; i < upto; i++)
             out.push(qsTr("步骤%1：%2").arg(cn[i] || (i + 1)).arg(root.stepLabel(root.ex.steps[i])))
         return out.join("　")
     }
