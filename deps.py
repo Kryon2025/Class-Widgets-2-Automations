@@ -105,9 +105,43 @@ def _dist_info(whl_name: str) -> str:
     return f"{parts[0]}-{parts[1]}.dist-info" if len(parts) >= 2 else ""
 
 
+def _wheel_missing(whl_name: str) -> list:
+    """wheel 里有、但 vendor/ 里缺（或大小不符）的文件清单。
+
+    解包中途失败（文件被占用、杀软拦截、进程被杀）会留下一堆半成品，
+    而 .dist-info 往往已经落盘 —— 只看 dist-info 会把半成品当成已完成，
+    于是永远不再重解。这里逐文件核对，才能发现残缺。
+    """
+    whl = VENDOR_DIR / whl_name
+    missing = []
+    try:
+        with zipfile.ZipFile(whl) as z:
+            for info in z.infolist():
+                if info.is_dir():
+                    continue
+                target = VENDOR_DIR / info.filename
+                try:
+                    if not target.is_file() or target.stat().st_size != info.file_size:
+                        missing.append(info.filename)
+                except OSError:
+                    missing.append(info.filename)
+    except Exception as e:                               # noqa: BLE001
+        # wheel 自身读不了：不能据此判定"残缺"，否则会每次启动都无限重解
+        logger.debug("[deps] 无法读取 {} 核对内容: {}", whl_name, e)
+        return []
+    return missing
+
+
 def is_installed(whl_name: str) -> bool:
     di = _dist_info(whl_name)
-    return bool(di) and (VENDOR_DIR / di).is_dir()
+    if not (di and (VENDOR_DIR / di).is_dir()):
+        return False
+    missing = _wheel_missing(whl_name)
+    if missing:
+        logger.warning("[deps] {} 解包不完整，缺 {} 个文件（例：{}），将重新解包",
+                       whl_name, len(missing), missing[0])
+        return False
+    return True
 
 
 def install_wheel(whl: Path) -> bool:
@@ -144,6 +178,8 @@ def ensure(progress=None) -> dict:
             progress(total, total, "")
         except Exception:                                # noqa: BLE001
             pass
+    if done < total:
+        logger.warning("[deps] 依赖未全部就绪: {}/{} —— 下次启动会重试解包", done, total)
     logger.info("[deps] 依赖就绪: {}/{}", done, total)
     return {"total": total, "done": done, "vendor": str(VENDOR_DIR)}
 
