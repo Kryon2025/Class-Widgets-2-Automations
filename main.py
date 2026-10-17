@@ -80,7 +80,10 @@ class Plugin(CW2Plugin):
                 provider_id=getattr(self, "pid", None) or "com.kryon.automations",
                 name="Kryon 自动化 / Kryon Automations",
                 icon="icon.png",
-                use_system_notify=True,
+                # 必须为 False：True 会让宿主把每条灵动通知【自动镜像】成一条
+                # 系统通知，用户会看到"灵动通知结束后又响一声另一种样式"的重复打扰。
+                # 系统通知由「发送系统通知」行动单独负责（notify.send）。
+                use_system_notify=False,
             )
             logger.info("[automations] 通知 provider 已注册")
         except Exception as e:
@@ -88,7 +91,7 @@ class Plugin(CW2Plugin):
 
         storage = _app_root() / "configs" / "plugins" / CFG_NAME
         try:
-            self._engine = RuleEngine(self.api, storage)
+            self._engine = RuleEngine(self.api, storage, getattr(self, "pid", None))
             # 自动停用发生在引擎内部，界面不知道；接个回调让设置页刷新
             self._engine.on_rules_changed = self.rulesChanged.emit
             if provider is not None:

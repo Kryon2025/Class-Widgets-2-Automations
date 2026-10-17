@@ -68,6 +68,8 @@ R_ALWAYS_TRUE = "always_true"
 R_ALWAYS_FALSE = "always_false"
 R_TODAY_IS = "today_is"           # 今天是…
 R_LATER_THAN = "later_than"       # 时间晚于…
+R_EARLIER_THAN = "earlier_than"   # 时间早于…
+R_IDLE = "idle"                   # 电脑空闲（多久没碰键鼠）…
 R_CURRENT_SUBJECT = "current_subject"
 R_NEXT_SUBJECT = "next_subject"
 R_PREV_SUBJECT = "prev_subject"
@@ -81,14 +83,14 @@ R_MEDIA = "media"                      # 媒体状态：是否在播/曲名/歌�
 R_NOTIF = "notif"                      # 系统通知：最近是否收到匹配的通知（p1 键 p2 比较 p3 值 p4 秒）
 # 随机点名：读它的配置项做判断（p1 = 配置项键，p2 = 期望值）
 R_ROLLCALL_CONFIG = "rollcall_config"
-RULE_TYPES = (R_ALWAYS_TRUE, R_ALWAYS_FALSE, R_TODAY_IS, R_LATER_THAN,
-              R_CURRENT_SUBJECT, R_NEXT_SUBJECT, R_PREV_SUBJECT, R_CURRENT_STATUS,
+RULE_TYPES = (R_ALWAYS_TRUE, R_ALWAYS_FALSE, R_TODAY_IS, R_LATER_THAN, R_EARLIER_THAN,
+              R_IDLE, R_CURRENT_SUBJECT, R_NEXT_SUBJECT, R_PREV_SUBJECT, R_CURRENT_STATUS,
               R_FOREGROUND_WINDOW, R_FLAG_IS, R_CURRENT_TEACHER, R_NEXT_TEACHER,
               R_SYS_SETTING, R_MEDIA, R_NOTIF, R_ROLLCALL_CONFIG)
 
 # ── 行动类型（顺序 = QML 下拉顺序）────────────────────────────
 A_RUN = "run"                     # 运行命令/程序/网址
-A_NOTIFY = "notify"               # 显示提醒
+A_NOTIFY = "notify"               # 自动化提醒
 A_WAIT = "wait"                   # 等待
 A_BROADCAST = "broadcast"         # 广播信号
 A_SET_FLAG = "set_flag"           # 设标志
@@ -185,14 +187,37 @@ def normalize_layer(value: Any) -> str:
     return LAYER_ALIASES.get(s, s)
 
 
+try:
+    from ClassWidgets.SDK import ConfigBaseModel         # 官方配置模型基类
+except Exception:                                        # noqa: BLE001
+    class ConfigBaseModel:                               # type: ignore[no-redef]
+        """离线/无 SDK 环境下的极简替身，只为能构造和读字段。"""
+
+        def __init__(self, **data):
+            for k, v in data.items():
+                setattr(self, k, v)
+
+        def model_dump(self):
+            return {k: v for k, v in self.__dict__.items()
+                    if not k.startswith("_")}
+
+
+class AutomationsConfig(ConfigBaseModel):
+    """本插件的配置模型，由 SDK 的 ConfigAPI 统一管理。"""
+    rules: list = []
+    flags: dict = {}
+    ext: dict = {}
+
+
 class RuleEngine(QObject):
     """自动化规则引擎（纯逻辑，不依赖主程序 src.core）。"""
 
     signalBus = Signal(str)  # 广播信号（收到信号触发器 + 广播信号行动）
 
-    def __init__(self, api, storage_path: Path):
+    def __init__(self, api, storage_path: Path, pid: Optional[str] = None):
         super().__init__()
         self._api = api
+        self._pid = pid
         self._storage = storage_path
         self._rules: list[dict] = []
         self._flags: dict[str, str] = {}
@@ -230,32 +255,86 @@ class RuleEngine(QObject):
 
     # ── 数据 ────────────────────────────────────────────────
 
-    def load(self) -> None:
+    def _model(self) -> Optional[AutomationsConfig]:
+        """取本插件的官方配置模型；拿不到（无 SDK / 无 pid）返回 None。"""
+        if not self._pid:
+            return None
         try:
-            if self._storage.is_file():
-                data = json.loads(self._storage.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    if isinstance(data.get("rules"), list):
-                        self._rules = [self._clean_rule(r) for r in data["rules"] if isinstance(r, dict)]
-                    self._flags = {str(k): str(v) for k, v in (data.get("flags") or {}).items()}
-                    raw_ext = data.get("ext")
-                    if isinstance(raw_ext, dict):
-                        self._ext = {str(k): bool(v) for k, v in raw_ext.items()}
-                        self._ext_known = True
-        except Exception as e:
-            logger.warning("[automations] 读取配置失败: {}", e)
+            cfg = getattr(self._api, "config", None)
+            if cfg is None:
+                return None
+            model = cfg.get_plugin_model(self._pid)
+            if isinstance(model, AutomationsConfig):
+                return model
+            model = AutomationsConfig()
+            cfg.register_plugin_model(self._pid, model)
+            logger.info("[automations] 已向 ConfigAPI 注册配置模型")
+            return model
+        except Exception as e:                           # noqa: BLE001
+            logger.debug("[automations] 取官方配置模型失败，回退 JSON: {}", e)
+            return None
+
+    def load(self) -> None:
+        migrated = False
+        raw = None
+        # ① 官方模型优先
+        model = self._model()
+        if model is not None:
+            try:
+                raw = model.model_dump()
+            except Exception as e:                       # noqa: BLE001
+                logger.debug("[automations] 读模型失败: {}", e)
+        # ② 模型空 → 从旧 JSON 迁移（首次升级时走这条）
+        if not (isinstance(raw, dict) and raw.get("rules")):
+            try:
+                if self._storage.is_file():
+                    legacy = json.loads(self._storage.read_text(encoding="utf-8"))
+                    if isinstance(legacy, dict) and legacy.get("rules"):
+                        raw = legacy
+                        migrated = True
+                        logger.info("[automations] 检测到旧配置，正在迁移到 ConfigAPI")
+            except Exception as e:                       # noqa: BLE001
+                logger.warning("[automations] 读取旧配置失败: {}", e)
+        # ③ 应用
+        try:
+            if isinstance(raw, dict):
+                if isinstance(raw.get("rules"), list):
+                    self._rules = [self._clean_rule(r) for r in raw["rules"]
+                                   if isinstance(r, dict)]
+                self._flags = {str(k): str(v)
+                               for k, v in (raw.get("flags") or {}).items()}
+                raw_ext = raw.get("ext")
+                if isinstance(raw_ext, dict):
+                    self._ext = {str(k): bool(v) for k, v in raw_ext.items()}
+                    self._ext_known = True
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 应用配置失败: {}", e)
+        if migrated:
+            self.save()                                  # 立即固化成新格式
         self._prev_status = self._safe_status()
 
     def save(self) -> bool:
+        """先写官方配置模型，再写一份 JSON 作为安全网。"""
+        ok = False
+        model = self._model()
+        if model is not None:
+            try:
+                model.rules = list(self._rules)
+                model.flags = dict(self._flags)
+                model.ext = dict(self._ext)
+                self._api.config.save()
+                ok = True
+            except Exception as e:                       # noqa: BLE001
+                logger.warning("[automations] 写入官方配置失败: {}", e)
         try:
             self._storage.parent.mkdir(parents=True, exist_ok=True)
             payload = {"rules": self._rules, "flags": self._flags, "ext": self._ext}
-            self._storage.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
-                                     encoding="utf-8")
-            return True
-        except Exception as e:
-            logger.warning("[automations] 保存失败: {}", e)
-            return False
+            self._storage.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            ok = True
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 保存 JSON 失败: {}", e)
+        return ok
 
     # ── 扩展功能开关 ────────────────────────────────────────
 
@@ -352,10 +431,18 @@ class RuleEngine(QObject):
     def _check_trigger(self, rule: dict, trig: dict, now: datetime.datetime) -> bool:
         t = trig.get("type")
         if t in (T_TIME, T_ALARM):
-            m = re.match(r"^(\d{1,2}):(\d{2})$", str(trig.get("p1") or "").strip())
+            # 时刻支持 HH:MM 或 HH:MM:SS（秒可省略，向后兼容旧规则）
+            m = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$",
+                         str(trig.get("p1") or "").strip())
             if not m:
                 return False
-            if (int(m.group(1)), int(m.group(2))) != (now.hour, now.minute):
+            hh, mi = int(m.group(1)), int(m.group(2))
+            sec = m.group(3)
+            if hh > 23 or mi > 59 or (sec is not None and int(sec) > 59):
+                return False
+            if (hh, mi) != (now.hour, now.minute):
+                return False
+            if sec is not None and int(sec) != now.second:
                 return False
             days = str(trig.get("p2") or "").strip()
             if days and str(now.isoweekday()) not in re.split(r"[,，、\s]+", days):
@@ -642,9 +729,16 @@ class RuleEngine(QObject):
             elif atype == A_MEDIA:
                 media.action(str(action.get("p1") or ""))
             elif atype == A_SYS_NOTIFY:
-                notify.send(str(action.get("p1") or ""), str(action.get("p2") or ""))
+                # 纯系统通知：直接走 Windows toast，不经过灵动通知。
+                # （provider 的 use_system_notify 已关掉，那里不该再镜像）
+                notify.send(str(action.get("p1") or "自动化提醒"),
+                            str(action.get("p2") or ""))
             elif atype == A_NOTIFY:
                 self._do_notify(action)
+                # p5：「显示完后执行下一步」。开 → 下一步等通知播完再走；
+                # 关 → 通知发出即继续（与以前的同步行为一致）
+                if str(action.get("p5") or "1") == "1":
+                    wait_ms = max(0, int(float(action.get("p3") or 0)))
             elif atype == A_BROADCAST:
                 self.signalBus.emit(str(action.get("p1") or ""))
             elif atype == A_SET_FLAG:
@@ -731,7 +825,15 @@ class RuleEngine(QObject):
         self._notify_unregistered_warned = False
 
     def _do_notify(self, a: dict) -> None:
-        """弹一条灵动通知（用 on_load 注册好的 provider，不再现场注册）。"""
+        """弹一条灵动通知（用 on_load 注册好的 provider，不再现场注册）。
+
+        参数：p1=标题  p2=正文  p3=时长(毫秒)  p4=级别
+              p5=「显示完后执行下一步」（默认开）
+              p6=「在隐藏状态下恢复显示」
+
+        灵动通知挂在主程序的小组件层上，那一层隐藏时通知没有落脚点，
+        所以 p6 打开时先临时恢复显示、播完再还原（与 com.rollcall 同一套做法）。
+        """
         if self._provider is None:
             if not self._notify_unregistered_warned:
                 self._notify_unregistered_warned = True
@@ -742,16 +844,149 @@ class RuleEngine(QObject):
         try:
             duration = max(0, int(float(a.get("p3") or 4000)))
             level = max(0, min(3, int(float(a.get("p4") or 0))))
-            # 用关键字参数：参数名与 com.rinlit.countdowndays 里已在用的写法一致
-            self._provider.push(
-                level=level,
-                title=str(a.get("p1") or "自动化提醒"),
-                message=str(a.get("p2") or ""),
-                duration=duration,
-                closable=True,
-            )
+            title = str(a.get("p1") or "自动化提醒")
+            message = str(a.get("p2") or "")
+            # 这条日志用于定位「时长/级别/恢复显示不生效」——把引擎实际收到的参数摊开
+            logger.info("[automations] 通知参数: title={!r} p3={}ms p4(级别)={} p5(播完再走)={} p6(恢复显示)={}",
+                        title[:30], a.get("p3"), a.get("p4"), a.get("p5"), a.get("p6"))
+
+            # p6：小组件层隐藏时临时恢复显示，让通知有落脚点
+            revealed = False
+            if str(a.get("p6") or "") == "1":
+                revealed = self._reveal_widget_layer()
+
+            self._push_notify(title, message, duration, level)
+
+            # 倒计时（乙方案）已停用：宿主只提供 push()、没有「就地改文字」的接口，
+            # 靠每秒重发去刷数字会把标题覆盖成「标题（还剩 N 秒）」，
+            # 且每次重发都用递减的 duration 重新计时，表现为「标题丢失 + 几秒就消失」。
+            # 若要恢复，务必先确认宿主的 push 是「同 provider 覆盖」而非「排队累加」。
+            if revealed:
+                # 多留 400ms，等通知收起动画走完再还原（与 rollcall 一致）
+                QTimer.singleShot(duration + 400, self._restore_widget_layer)
         except Exception as e:
             logger.warning("[automations] 通知失败: {}", e)
+
+    def _push_notify(self, title: str, message: str, duration: int, level: int) -> None:
+        """推一条通知。关键字参数名与 com.rinlit.countdowndays 的写法一致。"""
+        self._provider.push(
+            level=level,
+            title=title,
+            message=message,
+            duration=duration,
+            closable=True,
+        )
+
+    def _notify_countdown(self, title: str, message: str,
+                          duration: int, level: int) -> None:
+        """按秒重发带剩余秒数的通知，做出真人倒计时。
+
+        每次重发都把 duration 设成「剩余毫秒」，所以通知会一直被续到点。
+        用序号令牌防止旧倒计时在新通知发出后还在后台空转。
+        """
+        seq = getattr(self, "_notify_seq", 0) + 1
+        self._notify_seq = seq
+        end_at = datetime.datetime.now() + datetime.timedelta(milliseconds=duration)
+
+        def tick() -> None:
+            if getattr(self, "_notify_seq", 0) != seq or self._provider is None:
+                return                                   # 已被新通知顶掉
+            left_ms = int((end_at - datetime.datetime.now()).total_seconds() * 1000)
+            if left_ms <= 0:
+                return
+            try:
+                self._push_notify("%s（还剩 %d 秒）" % (title, max(1, left_ms // 1000)),
+                                  message, left_ms, level)
+            except Exception as e:                       # noqa: BLE001
+                logger.debug("[automations] 倒计时通知刷新失败: {}", e)
+                return
+            QTimer.singleShot(1000, tick)
+
+        QTimer.singleShot(1000, tick)
+
+    # ── 小组件层显隐（主程序的「隐藏小组件」开关）──────────────
+    # 与 com.rollcall 同一套做法：读/写 interactions.hide.state，
+    # 改完必须 save() 落盘，否则窗口属性不会真正生效。
+
+    def _global_config(self):
+        """主程序的全局配置对象；不同版本挂在不同的属性上，逐个试。"""
+        holders = [self._api]
+        app = getattr(self._api, "_app", None)
+        if app is not None:
+            holders.append(app)
+        for owner in holders:
+            for name in ("globalconfig", "config"):
+                obj = getattr(owner, name, None)
+                if obj is not None and hasattr(obj, "configs"):
+                    return obj
+        return None
+
+    def _widget_layer_hidden(self):
+        """小组件层当前是否隐藏；读不到返回 None。"""
+        try:
+            return bool(self._api.globalconfig.configs.interactions.hide.state)
+        except Exception:                                # noqa: BLE001
+            return None
+
+    def _set_widget_layer_hidden(self, hidden: bool) -> bool:
+        """改小组件层的隐藏开关并落盘（不落盘窗口属性不会真正生效）。"""
+        try:
+            gc = self._api.globalconfig
+            gc.configs.interactions.hide.state = bool(hidden)
+            gc.save()
+            return True
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 改写「隐藏小组件」失败: {}", e)
+            return False
+
+    HIDE_KEY = "interactions.hide.state"
+
+    def _hidden_lock(self, on: bool) -> None:
+        """按官方 GlobalConfigAPI 接管/放开「隐藏小组件」这个键。
+
+        官方设计：插件想临时改宿主全局配置时，应先 lock 该键、改完 unlock，
+        否则宿主可能在别处把它覆盖回去。拿不到这个接口（较老宿主）就跳过，
+        回退到 _set_widget_layer_hidden 里的直接赋值。
+        """
+        gc = getattr(self._api, "globalconfig", None)
+        if gc is None:
+            return
+        fn = getattr(gc, "lock" if on else "unlock", None)
+        if not callable(fn):
+            logger.debug("[automations] 宿主无 globalconfig.{}，回退直接赋值",
+                         "lock" if on else "unlock")
+            return
+        try:
+            fn(self.HIDE_KEY)
+            logger.debug("[automations] globalconfig.{}('{}') 成功",
+                         "lock" if on else "unlock", self.HIDE_KEY)
+        except Exception as e:                           # noqa: BLE001
+            logger.debug("[automations] globalconfig.{} 失败: {}", 
+                         "lock" if on else "unlock", e)
+
+    def _reveal_widget_layer(self) -> bool:
+        """小组件层隐藏时临时恢复显示，返回是否是我们动过它。"""
+        if self._widget_layer_hidden() is not True:
+            return False
+        # 官方姿势：先接管该配置键，避免宿主中途把它覆盖回去
+        self._hidden_lock(True)
+        if not self._set_widget_layer_hidden(False):
+            self._hidden_lock(False)
+            return False
+        self._layer_restored = True
+        logger.info("[automations] 小组件层原是隐藏的，已临时恢复显示供灵动通知落脚")
+        return True
+
+    def _restore_widget_layer(self) -> None:
+        """播完把小组件层还原成原先的隐藏状态。"""
+        if not getattr(self, "_layer_restored", False):
+            return
+        self._layer_restored = False
+        if self._widget_layer_hidden() is False:
+            self._set_widget_layer_hidden(True)
+            logger.info("[automations] 已还原小组件层的隐藏状态")
+        # 无论如何都要放开锁，否则宿主再也改不动这个键
+        self._hidden_lock(False)
 
     def _do_set_flag(self, a: dict, uid: Optional[str]) -> None:
         name = str(a.get("p1") or "").strip()
@@ -1065,6 +1300,10 @@ class RuleEngine(QObject):
                 v = self._today_is(p1)
             elif t == R_LATER_THAN:
                 v = self._later_than(p1)
+            elif t == R_EARLIER_THAN:
+                v = self._earlier_than(p1)
+            elif t == R_IDLE:
+                v = self._idle_at_least(p1)
             elif t == R_CURRENT_SUBJECT:
                 v = self._subject_match(self._api.runtime.current_subject, p1)
             elif t == R_NEXT_SUBJECT:
@@ -1108,12 +1347,72 @@ class RuleEngine(QObject):
         return False
 
     @staticmethod
-    def _later_than(p1: str) -> bool:
-        m = re.match(r"^(\d{1,2}):(\d{2})$", p1.strip())
+    def _parse_hms(p1: str) -> Optional[datetime.time]:
+        """解析时刻，接受 HH:MM 或 HH:MM:SS（秒可省略，向后兼容旧规则）。"""
+        m = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$", p1.strip())
         if not m:
+            return None
+        h, mi, s = int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
+        if h > 23 or mi > 59 or s > 59:
+            return None
+        return datetime.time(h, mi, s)
+
+    @classmethod
+    def _later_than(cls, p1: str) -> bool:
+        """时间晚于（含等于）。秒级：HH:MM 或 HH:MM:SS。"""
+        t = cls._parse_hms(p1)
+        return t is not None and datetime.datetime.now().time() >= t
+
+    @classmethod
+    def _earlier_than(cls, p1: str) -> bool:
+        """时间早于（不含等于，与「晚于」互补，二者不会同时为真）。"""
+        t = cls._parse_hms(p1)
+        return t is not None and datetime.datetime.now().time() < t
+
+    # ── 电脑空闲（长时间未触碰键鼠）────────────────────────────
+    @staticmethod
+    def _idle_seconds() -> float:
+        """自上次键盘/鼠标输入以来的秒数，失败返回 -1。
+
+        走 Win32 GetLastInputInfo：dwTime 是 32 位 tick，
+        GetTickCount() 同属 32 位 tick 空间，二者相减即使跨越
+        GetTickCount 的 49.7 天回绕仍然正确（差 < 49.7 天时）。
+        """
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class _LASTINPUTINFO(ctypes.Structure):
+                _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+
+            li = _LASTINPUTINFO()
+            li.cbSize = ctypes.sizeof(_LASTINPUTINFO)
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            user32.GetLastInputInfo.restype = wintypes.BOOL
+            kernel32.GetTickCount.restype = wintypes.DWORD
+            if not user32.GetLastInputInfo(ctypes.byref(li)):
+                return -1.0
+            tick = int(kernel32.GetTickCount()) & 0xFFFFFFFF
+            return max(0.0, (tick - int(li.dwTime)) / 1000.0)
+        except Exception:
+            return -1.0
+
+    @classmethod
+    def _idle_at_least(cls, p1: str) -> bool:
+        """空闲是否已达到 p1 秒（持续满足，可配合规则集 / 恢复使用）。
+
+        p1 支持小数（如 90 或 90.5）；非 Windows 或读取失败时恒为 False，
+        避免在无法判断的环境里误判为「一直空闲」。
+        """
+        try:
+            need = float(str(p1).strip() or 60)
+        except (TypeError, ValueError):
             return False
-        now = datetime.datetime.now().time()
-        return now >= datetime.time(int(m.group(1)), int(m.group(2)))
+        if need <= 0:
+            return False
+        idle = cls._idle_seconds()
+        return idle >= need
 
     @staticmethod
     def _subject_match(subject: Optional[Any], needle: str) -> bool:
@@ -1254,14 +1553,23 @@ class RuleEngine(QObject):
 
     @staticmethod
     def _clean_rule(r: dict) -> dict:
-        def fields(src: Optional[dict]) -> dict:
+        def fields(src: Optional[dict], keep_extra: bool = False) -> dict:
             src = src or {}
-            return {"type": str(src.get("type") or ""),
-                    "p1": str(src.get("p1") or ""),
-                    "p2": str(src.get("p2") or ""),
-                    "p3": str(src.get("p3") or ""),
-                    "p4": str(src.get("p4") or ""),
-                    "reversed": bool(src.get("reversed"))}
+            out = {"type": str(src.get("type") or ""),
+                   "p1": str(src.get("p1") or ""),
+                   "p2": str(src.get("p2") or ""),
+                   "p3": str(src.get("p3") or ""),
+                   "p4": str(src.get("p4") or ""),
+                   "reversed": bool(src.get("reversed"))}
+            if keep_extra:
+                # 行动可以带 p5/p6 这类扩展参数（「播完再走」「恢复显示」）。
+                # 这里不保留的话，每次存盘都会被这条清洗逻辑整条丢掉，
+                # 表现为"界面上打开了开关，重启后又变回关闭"。
+                for k, v in src.items():
+                    if (k not in out and len(k) > 1
+                            and k[0] == "p" and k[1:].isdigit()):
+                        out[k] = str(v or "")
+            return out
 
         def migrate_action(a: dict) -> dict:
             t = str(a.get("type") or "")
@@ -1293,7 +1601,8 @@ class RuleEngine(QObject):
         if not rulesets:
             rulesets = [{"enabled": False, "mode": "all", "reversed": False, "rules": []}]
 
-        actions = [fields(migrate_action(a)) for a in (r.get("actions") or [])
+        actions = [fields(migrate_action(a), keep_extra=True)
+                   for a in (r.get("actions") or [])
                    if isinstance(a, dict) and migrate_action(a).get("type") in ACTION_TYPES]
         if not actions:
             actions = [{"type": A_NOTIFY, "p1": "自动化提醒", "p2": "", "p3": "4000",

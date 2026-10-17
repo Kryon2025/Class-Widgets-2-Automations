@@ -82,7 +82,7 @@ PluginPage {
     }
 
     readonly property var ruleTypes: {
-        var a = ["always_true", "always_false", "today_is", "later_than",
+        var a = ["always_true", "always_false", "today_is", "later_than", "earlier_than", "idle",
             "current_subject", "next_subject", "prev_subject", "current_status",
             "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media"]
         if (page.sysNotifyExt) a = a.concat(["notif"])
@@ -112,8 +112,8 @@ PluginPage {
     property var sysOps: ["==", "!=", ">", ">=", "<", "<="]
     property var sysOpLabels: ["是", "不是", "大于", "大于等于", "小于", "小于等于"]
     readonly property var ruleLabels: {
-        var a = ["总是为真", "总是为假", "今天是…", "时间晚于…", "当前科目是",
-            "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
+        var a = ["总是为真", "总是为假", "今天是…", "时间晚于…", "时间早于…", "电脑空闲…",
+            "当前科目是", "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
             "当前教师是", "下节课教师是", "系统设置…", "媒体状态"]
         if (page.sysNotifyExt) a = a.concat(["系统通知…"])
         if (page.rollcallExt) a = a.concat(["随机点名配置…"])
@@ -128,7 +128,7 @@ PluginPage {
         return a
     }
     readonly property var actLabels: {
-        var a = ["运行命令/程序", "显示提醒", "等待", "广播信号", "设标志",
+        var a = ["运行命令/程序", "自动化提醒", "等待", "广播信号", "设标志",
             "设置配置项", "锁定配置项", "重启主程序", "打开系统设置页",
             "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理"]
         if (page.sysNotifyExt) a = a.concat(["发系统通知"])
@@ -392,6 +392,18 @@ PluginPage {
 
     function save() {
         if (!backend) return false
+        // 诊断：打印 page.rules 里 notify 行动此刻实际带的 p5/p6
+        try {
+            for (var i = 0; i < page.rules.length; i++) {
+                var _a = (page.rules[i] && page.rules[i].actions) || []
+                for (var j = 0; j < _a.length; j++) {
+                    if (_a[j] && _a[j].type === "notify")
+                        console.log("[automations] save 规则" + i + " 行动" + j
+                                    + " p5=" + _a[j].p5 + " p6=" + _a[j].p6
+                                    + " keys=" + Object.keys(_a[j]).join(","))
+                }
+            }
+        } catch (e) { console.log("[automations] save 诊断异常:", e) }
         var ok = backend.saveRulesJson(JSON.stringify(page.rules))
         statusText = ok ? "已保存（共 " + page.rules.length + " 条自动化）" : "保存失败（详见主程序日志）"
         if (ok) saveTimer.restart()
@@ -584,6 +596,8 @@ PluginPage {
             case "signal": return t.p1 || ""
             case "today_is": return page.labelOf(page.weekValues, page.weekLabels, t.p1)
             case "later_than": return t.p1 || ""
+            case "earlier_than": return t.p1 || ""
+            case "idle": return t.p1 ? (t.p1 + " 秒") : "60 秒"
             case "current_subject":
             case "next_subject":
             case "prev_subject": return t.p1 || ""
@@ -784,6 +798,8 @@ PluginPage {
         switch (t) {
             case "today_is": return ruleTodayComp
             case "later_than": return ruleLaterComp
+            case "earlier_than": return ruleEarlierComp
+            case "idle": return ruleIdleComp
             case "current_subject":
             case "next_subject":
             case "prev_subject": return ruleSubjectComp
@@ -869,18 +885,29 @@ PluginPage {
     Component {
         id: trigTimeComp
         ColumnLayout {
+            id: timeRoot
             spacing: 6
             property var it: null
             property bool loading: false
             function load(item) {
                 it = item
                 loading = true
-                var t = item.p1 || ""
-                if (!/^\d{2}:\d{2}$/.test(t)) { t = "08:00"; item.p1 = t }
-                timeF.setTime(t)
+                var m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(item.p1 || ""))
+                var hh = m ? m[1] : "08"
+                var mm = m ? m[2] : "00"
+                var ss = (m && m[3]) ? m[3] : "00"
+                item.p1 = hh + ":" + mm + ":" + ss
+                timeF.setTime(hh + ":" + mm)
+                secF.value = parseInt(ss, 10)
                 weekBox.load(item)
                 skipSw.checked = (item.p4 === "1")
                 loading = false
+            }
+            function save() {
+                if (loading || !it) return
+                var hm = timeF.time
+                if (!/^\d{2}:\d{2}$/.test(hm)) return
+                it.p1 = hm + ":" + ("0" + Math.round(secF.value)).slice(-2)
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -889,7 +916,15 @@ PluginPage {
                     id: timeF
                     Layout.preferredWidth: 150
                     use24Hour: true
-                    onTimeChanged: if (!loading && it && time) it.p1 = time
+                    onTimeChanged: timeRoot.save()
+                }
+                SpinBox {
+                    id: secF
+                    from: 0
+                    to: 59
+                    editable: true
+                    Layout.preferredWidth: 96
+                    onValueModified: timeRoot.save()
                 }
                 Text { text: "星期" }
                 WeekdayPicker { id: weekBox }
@@ -898,7 +933,7 @@ PluginPage {
             Switch {
                 id: skipSw
                 text: "自动跳过非上课日（当天课表没有课程时不触发）"
-                onToggled: if (!loading && it) it.p4 = (checked ? "1" : "")
+                onToggled: if (it) it.p4 = (checked ? "1" : "")
             }
         }
     }
@@ -906,6 +941,7 @@ PluginPage {
     Component {
         id: trigAlarmComp
         ColumnLayout {
+            id: alarmRoot
             spacing: 6
             property var it: null
             property bool loading: false
@@ -913,12 +949,22 @@ PluginPage {
             readonly property var soundLabels: ["系统提示音", "警告音", "询问音", "闹钟铃声", "自定义文件…"]
             readonly property var soundValues: ["", "exclamation", "question", "alarm", "custom"]
 
+            function save() {
+                if (loading || !it) return
+                var hm = alarmTime.time
+                if (!/^\d{2}:\d{2}$/.test(hm)) return
+                it.p1 = hm + ":" + ("0" + Math.round(alarmSec.value)).slice(-2)
+            }
             function load(item) {
                 it = item
                 loading = true
-                var t = item.p1 || ""
-                if (!/^\d{2}:\d{2}$/.test(t)) { t = "07:00"; item.p1 = t }
-                alarmTime.setTime(t)
+                var m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(item.p1 || ""))
+                var hh = m ? m[1] : "07"
+                var mm = m ? m[2] : "00"
+                var ss = (m && m[3]) ? m[3] : "00"
+                item.p1 = hh + ":" + mm + ":" + ss
+                alarmTime.setTime(hh + ":" + mm)
+                alarmSec.value = parseInt(ss, 10)
                 alarmWeek.load(item)
                 alarmSkip.checked = (item.p4 === "1")
                 var s = String(item.p3 || "")
@@ -936,7 +982,15 @@ PluginPage {
                     id: alarmTime
                     Layout.preferredWidth: 150
                     use24Hour: true
-                    onTimeChanged: if (!loading && it && time) it.p1 = time
+                    onTimeChanged: alarmRoot.save()
+                }
+                SpinBox {
+                    id: alarmSec
+                    from: 0
+                    to: 59
+                    editable: true
+                    Layout.preferredWidth: 96
+                    onValueModified: alarmRoot.save()
                 }
                 Text { text: "星期" }
                 WeekdayPicker { id: alarmWeek }
@@ -977,7 +1031,7 @@ PluginPage {
             Switch {
                 id: alarmSkip
                 text: "自动跳过非上课日（当天课表没有课程时不响）"
-                onToggled: if (!loading && it) it.p4 = (checked ? "1" : "")
+                onToggled: if (it) it.p4 = (checked ? "1" : "")
             }
             Text {
                 text: "到点会弹出「系统」级通知（标题 = 自动化名称）并响铃；不需要另外添加行动。"
@@ -1004,7 +1058,7 @@ PluginPage {
                 id: secSpin
                 Layout.preferredWidth: 120
                 from: 1; to: 86400; stepSize: 1; editable: true
-                onValueChanged: if (!loading && it) it.p1 = String(Math.round(value))
+                onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "秒" }
         }
@@ -1026,7 +1080,7 @@ PluginPage {
                 id: secSpin
                 Layout.preferredWidth: 120
                 from: 0; to: 3600; stepSize: 5; editable: true
-                onValueChanged: if (!loading && it) it.p1 = String(Math.round(value))
+                onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "秒前（上课/课间开始前触发）" }
         }
@@ -1079,20 +1133,112 @@ PluginPage {
     Component {
         id: ruleLaterComp
         RowLayout {
+            id: ruleLaterRoot
             spacing: 6
             property var it: null
             function load(item) {
                 it = item
-                var t = item.p1 || ""
-                if (!/^\d{2}:\d{2}$/.test(t)) { t = "08:00"; item.p1 = t }
-                timeF.setTime(t)
+                var m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(item.p1 || ""))
+                var hh = m ? m[1] : "08"
+                var mm = m ? m[2] : "00"
+                var ss = (m && m[3]) ? m[3] : "00"
+                item.p1 = hh + ":" + mm + ":" + ss
+                timeF.setTime(hh + ":" + mm)
+                secF.value = parseInt(ss, 10)
+            }
+            function save() {
+                if (!it) return
+                var hm = timeF.time
+                if (!/^\d{2}:\d{2}$/.test(hm)) return
+                var ss = ("0" + Math.round(secF.value)).slice(-2)
+                it.p1 = hm + ":" + ss
             }
             TimePicker {
                 id: timeF
                 Layout.preferredWidth: 150
                 use24Hour: true
-                onTimeChanged: if (it && time) it.p1 = time
+                onTimeChanged: ruleLaterRoot.save()
             }
+            SpinBox {
+                id: secF
+                from: 0
+                to: 59
+                editable: true
+                Layout.preferredWidth: 96
+                onValueModified: ruleLaterRoot.save()
+            }
+            Text {
+                text: qsTr("秒")
+            }
+        }
+    }
+
+    Component {
+        id: ruleEarlierComp
+        RowLayout {
+            id: ruleEarlierRoot
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                var m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(item.p1 || ""))
+                var hh = m ? m[1] : "08"
+                var mm = m ? m[2] : "00"
+                var ss = (m && m[3]) ? m[3] : "00"
+                item.p1 = hh + ":" + mm + ":" + ss
+                timeF.setTime(hh + ":" + mm)
+                secF.value = parseInt(ss, 10)
+            }
+            function save() {
+                if (!it) return
+                var hm = timeF.time
+                if (!/^\d{2}:\d{2}$/.test(hm)) return
+                var ss = ("0" + Math.round(secF.value)).slice(-2)
+                it.p1 = hm + ":" + ss
+            }
+            TimePicker {
+                id: timeF
+                Layout.preferredWidth: 150
+                use24Hour: true
+                onTimeChanged: ruleEarlierRoot.save()
+            }
+            SpinBox {
+                id: secF
+                from: 0
+                to: 59
+                editable: true
+                Layout.preferredWidth: 96
+                onValueModified: ruleEarlierRoot.save()
+            }
+            Text {
+                text: qsTr("秒")
+            }
+        }
+    }
+
+    Component {
+        id: ruleIdleComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                var n = parseInt(String(item.p1 == null ? "" : item.p1), 10)
+                if (isNaN(n) || n < 0) { n = 60; item.p1 = "60" }
+                sp.value = n
+            }
+            SpinBox {
+                id: sp
+                from: 0
+                to: 86400
+                editable: true
+                Layout.preferredWidth: 140
+                onValueModified: if (it) it.p1 = String(Math.round(value))
+            }
+            Text {
+                text: qsTr("秒内无键鼠操作即满足")
+            }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1660,43 +1806,90 @@ PluginPage {
     Component {
         id: actNotifyComp
         RowLayout {
-            spacing: 6
+            Layout.fillWidth: true
+            // it / loading / load() 必须挂在【组件根节点】上：
+            // 父级是对 Loader.item（即根节点）调用 load()，
+            // 放进内层容器会导致 load 永远不被调用、数据加载不出来。
             property var it: null
             property bool loading: false
             function load(item) {
                 it = item
                 loading = true
-                titleF.text = item.p1 || ""
-                bodyF.text = item.p2 || ""
-                durSpin.value = parseInt(item.p3 || "4000") / 1000
-                var li = page.levelValues.indexOf(item.p4 || "")
-                lvlCombo.currentIndex = Math.max(0, li)
-                loading = false
+                console.log("[automations] notify load p3=" + item.p3 + " p5=" + item.p5
+                            + " p6=" + item.p6 + " keys=" + Object.keys(item).join(","))
+                try {
+                    titleF.text = item.p1 || ""
+                    bodyF.text = item.p2 || ""
+                    durSpin.value = parseInt(item.p3 || "4000") / 1000
+                    var li = page.levelValues.indexOf(item.p4 || "")
+                    lvlCombo.currentIndex = Math.max(0, li)
+                    // p5 缺省视为开：老规则没写 p5，按「显示完后执行下一步」处理
+                    seqSw.checked = String(item.p5 === undefined || item.p5 === null ? "1" : item.p5) !== "0"
+                    revealSw.checked = String(item.p6 || "") === "1"
+                } catch (e) {
+                    console.warn("[automations] notify load 异常:", e)
+                } finally {
+                    // 必须复位：loading 卡在 true 会让 Switch.onToggled / SpinBox.onValueChanged 全部失效
+                    loading = false
+                }
             }
-            TextField {
-                id: titleF
+            ColumnLayout {
                 Layout.fillWidth: true
-                placeholderText: "标题"
-                onTextEdited: if (it) it.p1 = text
-            }
-            TextField {
-                id: bodyF
-                Layout.fillWidth: true
-                placeholderText: "正文（可空）"
-                onTextEdited: if (it) it.p2 = text
-            }
-            SpinBox {
-                id: durSpin
-                Layout.preferredWidth: 100
-                from: 0; to: 60; stepSize: 1; editable: true
-                onValueChanged: if (!loading && it) it.p3 = String(Math.round(value * 1000))
-            }
-            Text { text: "秒" }
-            ComboBox {
-                id: lvlCombo
-                Layout.preferredWidth: 130
-                model: page.levelLabels
-                onActivated: if (it) it.p4 = page.levelValues[index]
+                spacing: 6
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    TextField {
+                        id: titleF
+                        Layout.fillWidth: true
+                        placeholderText: "标题"
+                        onTextEdited: if (it) it.p1 = text
+                    }
+                    TextField {
+                        id: bodyF
+                        Layout.fillWidth: true
+                        placeholderText: "正文（可空）"
+                        onTextEdited: if (it) it.p2 = text
+                    }
+                    SpinBox {
+                        id: durSpin
+                        Layout.preferredWidth: 100
+                        from: 0; to: 60; stepSize: 1; editable: true
+                        // 不设 loading 守卫：load() 里赋值时写回的是同一个值（幂等），
+                        // 而 loading 一旦卡在 true 会让此控件永久失效（已实际踩到）
+                        onValueChanged: if (it) it.p3 = String(Math.round(value * 1000))
+                    }
+                    Text { text: "秒" }
+                    ComboBox {
+                        id: lvlCombo
+                        Layout.preferredWidth: 130
+                        model: page.levelLabels
+                        onActivated: if (it) it.p4 = page.levelValues[index]
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Switch {
+                        id: seqSw
+                        text: "显示完后执行下一步"
+                        // 去掉 loading 守卫：loading 一旦卡死会让开关永久失效（已实际踩到）；
+                        // load() 里赋值时写回同一值，是幂等的
+                        onToggled: {
+                            console.log("[automations] seqSw toggled it=" + (!!it) + " checked=" + checked)
+                            if (it) it.p5 = (checked ? "1" : "0")
+                        }
+                    }
+                    Switch {
+                        id: revealSw
+                        text: "在隐藏状态下恢复显示"
+                        onToggled: {
+                            console.log("[automations] revealSw toggled it=" + (!!it) + " checked=" + checked)
+                            if (it) it.p6 = (checked ? "1" : "0")
+                        }
+                    }
+                    Item { Layout.fillWidth: true }
+                }
             }
         }
     }
@@ -1717,7 +1910,7 @@ PluginPage {
                 id: secSpin
                 Layout.preferredWidth: 120
                 from: 0; to: 3600; stepSize: 1; editable: true
-                onValueChanged: if (!loading && it) it.p1 = String(Math.round(value))
+                onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "秒（暂停后再执行下一条行动）" }
         }
@@ -1782,7 +1975,7 @@ PluginPage {
                 id: cntSpin
                 Layout.preferredWidth: 120
                 from: 1; to: 5; stepSize: 1; editable: true
-                onValueChanged: if (!loading && it) it.p1 = String(Math.round(value))
+                onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "人（一次点名抽几人）" }
         }
@@ -1898,14 +2091,14 @@ PluginPage {
                 id: boolSw
                 visible: meta && meta.kind === "bool"
                 text: "开"
-                onToggled: if (!loading && it) it.p2 = checked ? "true" : "false"
+                onToggled: if (it) it.p2 = checked ? "true" : "false"
             }
             ComboBox {
                 id: themeCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "theme"
                 model: page.themeNames
-                onActivated: if (!loading && it) it.p2 = page.themeIds[index]
+                onActivated: if (it) it.p2 = page.themeIds[index]
             }
             Button {
                 text: "列表…"
@@ -1918,7 +2111,7 @@ PluginPage {
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "anchor"
                 model: page.anchorLabels
-                onActivated: if (!loading && it) it.p2 = page.anchorValues[index]
+                onActivated: if (it) it.p2 = page.anchorValues[index]
             }
             Button {
                 text: "列表…"
@@ -1931,28 +2124,28 @@ PluginPage {
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "layer"
                 model: page.layerLabels
-                onActivated: if (!loading && it) it.p2 = page.layerValues[index]
+                onActivated: if (it) it.p2 = page.layerValues[index]
             }
             ComboBox {
                 id: precCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "precision"
                 model: page.precisionLabels
-                onActivated: if (!loading && it) it.p2 = page.precisionValues[index]
+                onActivated: if (it) it.p2 = page.precisionValues[index]
             }
             ComboBox {
                 id: tapCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "tap"
                 model: page.tapLabels
-                onActivated: if (!loading && it) it.p2 = page.tapValues[index]
+                onActivated: if (it) it.p2 = page.tapValues[index]
             }
             ComboBox {
                 id: presetCombo
                 Layout.fillWidth: true
                 visible: meta && meta.kind === "preset"
                 model: page.presets
-                onActivated: if (!loading && it) it.p2 = page.presets[index]
+                onActivated: if (it) it.p2 = page.presets[index]
             }
             Button {
                 text: "列表…"
@@ -1969,7 +2162,7 @@ PluginPage {
                 to: meta && meta.kind === "int" ? 2000 : (meta && meta.kind === "floatScale" ? 4 : 1)
                 stepSize: meta && meta.kind === "int" ? 4 : 0.05
                 onValueChanged: {
-                    if (!loading && it) {
+                    if (it) {
                         if (meta && meta.kind === "int") it.p2 = String(Math.round(value))
                         else it.p2 = String(Math.round(value * 100) / 100)
                     }
@@ -2962,7 +3155,7 @@ PluginPage {
                                 text: "行动（顺序执行，可排序）"
                             }
                             Text {
-                                text: "运行命令、显示提醒、打开应用、等待、广播信号、设标志、设置配置项、锁定配置项、重启主程序。"
+                                text: "运行命令、自动化提醒、打开应用、等待、广播信号、设标志、设置配置项、锁定配置项、重启主程序。"
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
                             }

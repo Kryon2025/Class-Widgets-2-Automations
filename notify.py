@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from pathlib import Path
 
 from loguru import logger
 
@@ -22,6 +23,7 @@ _DB_DIR = os.path.expandvars(r"%LocalAppData%\Microsoft\Windows\Notifications")
 _FT_UNIX_OFFSET = 11644473600        # 1601-01-01 → 1970-01-01 的秒差
 
 TOAST_APP_ID = "Kryon.Automations"
+TOAST_APP_NAME = "Kryon的自动化"
 
 _last_arrival = None                 # 已见过的最大 ArrivalTime（FILETIME），用于「新通知」基线
 _avail = None                        # 通知库是否可读（None=未知）
@@ -291,14 +293,49 @@ def _load_toast() -> bool:
     except Exception:                                # noqa: BLE001
         pass
     try:
-        from winsdk.windows.ui.notifications import ToastNotificationManager, ToastNotification
-        from winsdk.windows.data.xml.dom import XmlDocument
-        _toast = (ToastNotificationManager, ToastNotification, XmlDocument)
-        logger.info("[notify] winsdk toast 导入成功 ✓")
-        return True
-    except Exception as e:                           # noqa: BLE001
-        logger.debug("[notify] winsdk toast 尚未可用: {}", e)
+        # 包名有两个世代：新的是 winrt（PyWinRT 3.x），老的是 winsdk。
+        # vendor 里装的是 winrt*，所以必须先试 winrt —— 只写 winsdk 的话
+        # 导入永远失败，send() 直接 return False，系统通知就成了摆设。
+        last_err = None
+        for pkg in ("winrt", "winsdk"):
+            try:
+                mods = __import__(f"{pkg}.windows.ui.notifications", fromlist=["__all__"])
+                xmlmod = __import__(f"{pkg}.windows.data.xml.dom", fromlist=["__all__"])
+                _toast = (mods.ToastNotificationManager,
+                          mods.ToastNotification,
+                          xmlmod.XmlDocument)
+                logger.info("[notify] {} toast 导入成功 ✓", pkg)
+                return True
+            except Exception as e:                   # noqa: BLE001
+                last_err = e
+                logger.debug("[notify] {} toast 不可用: {}", pkg, e)
+        logger.warning("[notify] winrt / winsdk 都拿不到 toast 接口: {}", last_err)
         return False
+    except Exception as e:                           # noqa: BLE001
+        logger.warning("[notify] 加载 toast 失败: {}", e)
+        return False
+
+
+def _ensure_aumid() -> None:
+    """把 TOAST_APP_ID 注册到 HKCU，让未打包应用也能弹 toast（参考 WinIsland 的做法）。"""
+    try:
+        import winreg
+    except Exception:                                # noqa: BLE001
+        return
+    key_path = r"Software\Classes\AppUserModelId\%s" % TOAST_APP_ID
+    icon = Path(__file__).resolve().parent / "icon.png"
+    try:
+        k = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, key_path, 0,
+                               winreg.KEY_SET_VALUE)
+        try:
+            winreg.SetValueEx(k, "DisplayName", 0, winreg.REG_SZ, TOAST_APP_NAME)
+            if icon.is_file():
+                winreg.SetValueEx(k, "IconUri", 0, winreg.REG_SZ, str(icon))
+        finally:
+            winreg.CloseKey(k)
+        logger.debug("[notify] AUMID 已注册: {}", TOAST_APP_ID)
+    except Exception as e:                           # noqa: BLE001
+        logger.debug("[notify] AUMID 注册跳过: {}", e)
 
 
 def _esc(s: str) -> str:
@@ -318,11 +355,29 @@ def send(title: str, body: str = "") -> bool:
             '<toast><visual><binding template="ToastGeneric">'
             f'<text>{t}</text><text>{b}</text>'
             '</binding></visual></toast>')
-        notifier = Mgr.create_toast_notifier(TOAST_APP_ID)
-        if notifier:
-            notifier.show(Toast(xml))
-            return True
-        return False
+        # 先保证 AUMID 注册过，否则 create_toast_notifier 必然返回 None
+        _ensure_aumid()
+        notifier = None
+        icon = Path(__file__).resolve().parent / "icon.png"
+        # 优先用 with_id：它能把「Kryon的自动化」作为通知头部显示名传进去；
+        # 只用 create_toast_notifier(aumid) 时，头部会显示裸 AUMID（插件 ID）。
+        try:
+            notifier = Mgr.create_toast_notifier_with_id(
+                TOAST_APP_ID, TOAST_APP_NAME, str(icon))
+        except Exception as e:                       # noqa: BLE001
+            logger.debug("[notify] create_toast_notifier_with_id 不可用: {}", e)
+        if notifier is None:
+            notifier = Mgr.create_toast_notifier(TOAST_APP_ID)
+        if notifier is None:
+            # 这里是以前"静默失败"的地方，补上日志才能定位
+            logger.warning(
+                "[notify] 拿不到 toast notifier（AUMID={}）。"
+                "通常是 AppUserModelID 未注册，或系统通知被策略/专注助手拦截。",
+                TOAST_APP_ID)
+            return False
+        notifier.show(Toast(xml))
+        logger.info("[notify] 系统通知已发出: {}", str(title)[:40])
+        return True
     except Exception as e:                           # noqa: BLE001
         logger.warning("[notify] 发通知失败: {}", e)
         return False

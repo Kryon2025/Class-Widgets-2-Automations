@@ -10,6 +10,14 @@ import ClassWidgets.Theme
 //
 // 注：行动步骤的逐步展示（轮播）暂时去掉，后期再做。
 //     引擎侧的 exec.steps / exec.index 仍在提供，接回来时直接用即可。
+//
+// 关于「隐藏后恢复显示时组件框被裁剪」：
+//   根因在宿主的 BaseWidget.qml —— implicitWidth 由 visibleContentWidth() 实时计算，
+//   同时挂了 Behavior on implicitWidth 且缓动是 liquidBack（带回弹过冲）。
+//   层恢复（interactions.hide.state true -> false）时它从旧值弹到新值并过冲，
+//   期间宽度是中间态，内容就按错误尺寸布局，表现为裁剪；点选组件触发重新求值后恢复。
+//   尺寸不归插件控制，试过 width 归零、几何恒定、强制 update() 等均无效，
+//   故此处保持最简写法，问题交由宿主修复（恢复时禁用该 Behavior，或去掉回弹缓动）。
 Widget {
     id: root
     text: qsTr("自动化")

@@ -85,22 +85,61 @@ def available() -> bool:
     return _load()
 
 
+_LOOP = None
+
+
+def _loop():
+    """整个进程复用同一个事件循环。
+
+    winrt 的异步操作与「等待它的那个 loop」绑定。原先每次调用都走
+    ``asyncio.run()``（新建 loop → 跑完 → 关闭），而规则是每秒求值一次，
+    等于每秒建销一个 loop —— WinRT 侧的完成回调随之失去依托，媒体会话
+    就表现为「拿不到 / 时有时无 / 不能持久存在」。这里改成常驻单例。
+    """
+    global _LOOP
+    if _LOOP is None or _LOOP.is_closed():
+        _LOOP = asyncio.new_event_loop()
+    return _LOOP
+
+
 def _run(op):
-    """winrt 的异步操作返回 _IAsyncOperation（非协程），必须先 await 再 asyncio.run。"""
+    """winrt 的异步操作返回 _IAsyncOperation（非协程），需 await 后由常驻 loop 驱动。"""
     async def _await():
         return await op
-    return asyncio.run(_await())
+    return _loop().run_until_complete(_await())
+
+
+_MGR = None
+
+
+def _manager():
+    """取（并缓存）SMTC 会话管理器。
+
+    原先每次都重新 request_async()，反复创建 COM 对象既浪费又容易在
+    loop 重建时失联。这里首次取到后就一直复用，失效时由 _session() 丢弃重取。
+    """
+    global _MGR
+    if _MGR is None:
+        _MGR = _run(_Manager.request_async())
+    return _MGR
 
 
 def _session():
     if not _load():
         return None
-    try:
-        mgr = _run(_Manager.request_async())
-        return mgr.get_current_session() if mgr else None
-    except Exception as e:                               # noqa: BLE001
-        logger.debug("[media] 取会话失败: {}", e)
-        return None
+    global _MGR
+    for attempt in (0, 1):
+        try:
+            mgr = _manager()
+            return mgr.get_current_session() if mgr else None
+        except Exception as e:                           # noqa: BLE001
+            if attempt == 0:
+                # 管理器可能已失效（媒体应用重启 / 会话更替），丢弃后重取一次
+                _MGR = None
+                continue
+            logger.debug("[media] 取会话失败: {}", e)
+            return None
+    return None
 
 
 # ── 动作 ────────────────────────────────────────────────────

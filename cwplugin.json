@@ -1,8 +1,8 @@
 {
   "id": "com.kryon.automations",
   "name": "Kryon的自动化",
-  "version": "2.0.1",
-  "api_version": ">=0.6.0",
+  "version": "2.0.2",
+  "api_version": "~=0.7.0",
   "entry": "main.py",
   "author": "Kryon",
   "description": "为ClassWidgets2提供自动化功能",
