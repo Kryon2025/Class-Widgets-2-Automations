@@ -18,42 +18,10 @@ PluginPage {
     pluginId: "com.kryon.automations"
     title: "自动化"
 
+    // 页头只留工具按钮：「随机点名联动 / 系统通知」两个开关已收进
+    // 主界面的「扩展功能」折叠列表（见下方 SettingsLayout）。
     extraHeaderItems: RowLayout {
         spacing: 8
-
-        Switch {
-            id: sysNotifySwitch
-            text: "系统通知"
-            checked: page.sysNotifyExt
-            enabled: backend && backend.setSysNotifyExtEnabled
-            Component.onCompleted: if (backend && backend.sysNotifyExtEnabled)
-                                       page.sysNotifyExt = backend.sysNotifyExtEnabled()
-            onToggled: {
-                page.sysNotifyExt = checked
-                if (backend && backend.setSysNotifyExtEnabled)
-                    backend.setSysNotifyExtEnabled(checked)
-            }
-            ToolTip.visible: hovered
-            ToolTip.text: "在三个模块中显示「发系统通知 / 收到系统通知时 / 系统通知条件」"
-        }
-
-        Switch {
-            id: rollcallSwitch
-            text: "随机点名联动"
-            checked: page.rollcallExt
-            enabled: backend && backend.setRollcallExtEnabled
-            Component.onCompleted: if (backend && backend.rollcallExtEnabled)
-                                       page.rollcallExt = backend.rollcallExtEnabled()
-            onToggled: {
-                page.rollcallExt = checked
-                if (backend && backend.setRollcallExtEnabled)
-                    backend.setRollcallExtEnabled(checked)
-            }
-            ToolTip.visible: hovered
-            ToolTip.text: backend && backend.rollcallAvailable && backend.rollcallAvailable()
-                          ? "在三个模块中显示随机点名（com.rollcall）相关项"
-                          : "未检测到随机点名插件（com.rollcall）"
-        }
 
         Button {
             text: "窗口调试"
@@ -65,6 +33,17 @@ PluginPage {
     // 扩展功能开关：关闭时三个模块都不出现对应项
     property bool rollcallExt: false      // 随机点名联动（依赖 com.rollcall）
     property bool sysNotifyExt: true      // 系统通知（发系统通知 / 收到通知时 / 通知条件）
+    // 已被用户关掉的界面提示（key → true），由引擎持久化
+    property var hintDismissed: ({})
+
+    function dismissHint(key) {
+        var h = {}
+        var cur = page.hintDismissed || ({})
+        for (var k in cur) h[k] = cur[k]
+        h[key] = true
+        page.hintDismissed = h
+        if (backend && backend.dismissHint) backend.dismissHint(key)
+    }
 
     readonly property var trigTypes: {
         var a = ["time", "interval", "class_start", "class_end", "break_start",
@@ -361,6 +340,10 @@ PluginPage {
             page.themeIds = th.map(function (e) { return e[0] })
             page.themeNames = th.map(function (e) { return e[1] || e[0] })
         } catch (e) { page.themeIds = []; page.themeNames = [] }
+        try {
+            var hints = JSON.parse(backend.getHintsJson ? backend.getHintsJson() : "{}")
+            page.hintDismissed = (hints && typeof hints === "object") ? hints : ({})
+        } catch (e) { page.hintDismissed = ({}) }
         statusText = ""
     }
 
@@ -2576,6 +2559,72 @@ PluginPage {
             }
         }
 
+        // 「恢复」提示：原先挂在新建 / 编辑页顶部，现在挪到主界面；
+        // 右上角可关闭，关掉后记进配置，下次不再出现。
+        InfoBar {
+            id: revertHint
+            Layout.fillWidth: true
+            severity: Severity.Info
+            title: "关于「恢复」"
+            text: "未开启「恢复」的自动化只会执行一次，执行完毕后会自动停用。需要反复触发请开启「恢复」。"
+            closable: true
+            visible: !(page.hintDismissed || {}).revert
+            onVisibleChanged: if (!visible && !(page.hintDismissed || {}).revert)
+                                  page.dismissHint("revert")
+        }
+
+        // 扩展功能：两个开关收进折叠列表，默认收起
+        SettingExpander {
+            id: extExpander
+            Layout.fillWidth: true
+            icon.name: "ic_fluent_settings_20_regular"
+            title: "扩展功能"
+            description: "按需开启；关掉后对应模块不会出现在触发器 / 规则 / 行动的下拉里。"
+            expanded: false
+
+            // 直接放 SettingItem：让它直接挂在 Expander 的内容布局下，
+            // 圆角、分隔线与宿主的其它设置页保持一致。
+            SettingItem {
+                title: "系统通知"
+                description: "显示「发系统通知 / 收到系统通知时 / 系统通知条件」"
+                showDivider: true
+
+                action: Switch {
+                    id: sysNotifySwitch
+                    checked: page.sysNotifyExt
+                    enabled: backend && backend.setSysNotifyExtEnabled
+                    Component.onCompleted: if (backend && backend.sysNotifyExtEnabled)
+                                               page.sysNotifyExt = backend.sysNotifyExtEnabled()
+                    onToggled: {
+                        page.sysNotifyExt = checked
+                        if (backend && backend.setSysNotifyExtEnabled)
+                            backend.setSysNotifyExtEnabled(checked)
+                    }
+                }
+            }
+
+            SettingItem {
+                title: "随机点名联动"
+                description: (backend && backend.rollcallAvailable && backend.rollcallAvailable())
+                             ? "显示随机点名（com.rollcall）相关项"
+                             : "未检测到随机点名插件（com.rollcall），开启后相关项也不会出现"
+                showDivider: false
+
+                action: Switch {
+                    id: rollcallSwitch
+                    checked: page.rollcallExt
+                    enabled: backend && backend.setRollcallExtEnabled
+                    Component.onCompleted: if (backend && backend.rollcallExtEnabled)
+                                               page.rollcallExt = backend.rollcallExtEnabled()
+                    onToggled: {
+                        page.rollcallExt = checked
+                        if (backend && backend.setRollcallExtEnabled)
+                            backend.setRollcallExtEnabled(checked)
+                    }
+                }
+            }
+        }
+
         Text {
             Layout.fillWidth: true
             visible: page.statusText.length > 0
@@ -2851,17 +2900,6 @@ PluginPage {
                     ColumnLayout {
                         width: sheet.width - 44 - 14
                         spacing: 12
-
-                        SettingCard {
-                            Layout.fillWidth: true
-                            Layout.topMargin: 10
-                            Layout.bottomMargin: 10
-                            color: "transparent"
-                            border.color: "transparent"
-                            icon.name: "ic_fluent_info_20_regular"
-                            title: qsTr("恢复")
-                            description: qsTr("未开启「恢复」的自动化只会执行一次，执行完毕后会自动停用。需要反复触发请开启「恢复」。")
-                        }
 
                         Frame {
                             Layout.fillWidth: true

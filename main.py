@@ -236,6 +236,25 @@ class Plugin(CW2Plugin):
             return False
 
     @Slot(result=str)
+    def getHintsJson(self) -> str:
+        """已被用户关掉的设置页提示（key → true）。"""
+        try:
+            hints = self._engine.get_hints() if self._engine else {}
+            return json.dumps(hints, ensure_ascii=False)
+        except Exception as e:
+            logger.warning("[automations] 读取提示状态失败: {}", e)
+            return "{}"
+
+    @Slot(str, result=bool)
+    def dismissHint(self, key: str) -> bool:
+        """记住某个提示已被关闭，下次不再显示。"""
+        try:
+            return bool(self._engine.dismiss_hint(key)) if self._engine else False
+        except Exception as e:
+            logger.warning("[automations] 记录提示状态失败: {}", e)
+            return False
+
+    @Slot(result=str)
     def getRulesJson(self) -> str:
         rules = self._engine.get_rules() if self._engine else []
         return json.dumps(rules, ensure_ascii=False)

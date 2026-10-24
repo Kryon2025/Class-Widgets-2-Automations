@@ -207,6 +207,8 @@ class AutomationsConfig(ConfigBaseModel):
     rules: list = []
     flags: dict = {}
     ext: dict = {}
+    # 设置页里用户点掉过的提示（key → True）；关掉之后就不再显示
+    hints: dict = {}
 
 
 class RuleEngine(QObject):
@@ -223,6 +225,7 @@ class RuleEngine(QObject):
         self._flags: dict[str, str] = {}
         self._exec = None          # 当前执行态（小组件展示用）
         self._ext: dict = {}       # 扩展功能开关（如 rollcall 联动）
+        self._hints: dict[str, bool] = {}   # 设置页里已被关掉的提示
         self.on_rules_changed = None   # 插件注入：规则被后台改动时通知界面刷新
         self._ext_known = False    # 文件里是否已有 ext（有则不再自动改写）
         self._active: dict[str, dict] = {}   # uid -> {"keys": {path: orig}, "rule": rule}
@@ -307,6 +310,9 @@ class RuleEngine(QObject):
                 if isinstance(raw_ext, dict):
                     self._ext = {str(k): bool(v) for k, v in raw_ext.items()}
                     self._ext_known = True
+                raw_hints = raw.get("hints")
+                if isinstance(raw_hints, dict):
+                    self._hints = {str(k): bool(v) for k, v in raw_hints.items()}
         except Exception as e:                           # noqa: BLE001
             logger.warning("[automations] 应用配置失败: {}", e)
         if migrated:
@@ -322,13 +328,15 @@ class RuleEngine(QObject):
                 model.rules = list(self._rules)
                 model.flags = dict(self._flags)
                 model.ext = dict(self._ext)
+                model.hints = dict(self._hints)
                 self._api.config.save()
                 ok = True
             except Exception as e:                       # noqa: BLE001
                 logger.warning("[automations] 写入官方配置失败: {}", e)
         try:
             self._storage.parent.mkdir(parents=True, exist_ok=True)
-            payload = {"rules": self._rules, "flags": self._flags, "ext": self._ext}
+            payload = {"rules": self._rules, "flags": self._flags,
+                       "ext": self._ext, "hints": self._hints}
             self._storage.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
             ok = True
@@ -357,6 +365,25 @@ class RuleEngine(QObject):
     def set_ext(self, name: str, on: bool) -> bool:
         self._ext = self._ext or {}
         self._ext[str(name)] = bool(on)
+        return self.save()
+
+    # ── 设置页提示（关过就不再弹）────────────────────────────
+
+    def get_hints(self) -> dict[str, bool]:
+        return self._hints
+
+    def hint_dismissed(self, key: str) -> bool:
+        return bool((self._hints or {}).get(str(key)))
+
+    def dismiss_hint(self, key: str) -> bool:
+        """记住某条界面提示已经被关闭，下次打开设置页不再显示。"""
+        key = str(key or "").strip()
+        if not key:
+            return False
+        if self.hint_dismissed(key):
+            return True
+        self._hints = self._hints or {}
+        self._hints[key] = True
         return self.save()
 
     def get_rules(self) -> list[dict]:
@@ -406,21 +433,70 @@ class RuleEngine(QObject):
     # ── 随机点名信号挂接 ────────────────────────────────────
 
     def _ensure_rollcall_hook(self) -> None:
-        """把点名插件的信号接到引擎上。插件晚到或重装时自动重挂。"""
+        """把点名插件的信号接到引擎上。插件晚到或重装时自动重挂。
+
+        每个插件实例只挂一次：挂不上也认了，**绝不每秒重试**。以前这里
+        每 tick（1 秒）都重新 connect 一遍，点名插件没有 picked 属性时
+        「挂接随机点名信号失败」会一秒一条把日志刷满。
+        """
         rc = self._rollcall()
         if rc is None:
             self._rc_hooked = None
             return
         if getattr(self, "_rc_hooked", None) is rc:
             return
+        self._rc_hooked = rc
+        missing = []
         try:
             rc.rollRequested.connect(self._on_rollcall_start)
-            rc.picked.connect(self._on_rollcall_picked)
-        except Exception as e:
-            logger.warning("[automations] 挂接随机点名信号失败: {}", e)
-            return
-        self._rc_hooked = rc
-        logger.info("[automations] 已挂接随机点名信号")
+        except Exception as e:                       # noqa: BLE001
+            missing.append("rollRequested")
+            logger.debug("[automations] 挂接点名「开始」信号失败: {}", e)
+        if not self._hook_rollcall_picked(rc):
+            missing.append("picked")
+        if missing:
+            logger.info("[automations] 随机点名联动不完整（缺 {}），"
+                        "「随机点名…」触发器可能不生效", " / ".join(missing))
+        else:
+            logger.info("[automations] 已挂接随机点名信号")
+
+    def _hook_rollcall_picked(self, rc) -> bool:
+        """接住「点名出结果」，成功返回 True。
+
+        点名插件各版本对外的接口不一样：老版本有 picked 信号；现在的版本
+        只在内部回调 _on_pick 里收尾（结果窗口 → onPicked → _on_pick）。
+        有信号就接信号；没有就包一层内部回调，让「随机点名出结果后」仍可用。
+        """
+        sig = getattr(rc, "picked", None)
+        if sig is not None:
+            try:
+                sig.connect(self._on_rollcall_picked)
+                return True
+            except Exception as e:                   # noqa: BLE001
+                logger.debug("[automations] 挂接点名 picked 信号失败: {}", e)
+        inner = getattr(rc, "_rollcall_orig_on_pick", None)
+        if not callable(inner):
+            inner = getattr(rc, "_on_pick", None)
+        if not callable(inner):
+            return False
+        engine = self
+
+        def _patched_pick(names=None, *args, **kwargs):
+            try:
+                engine._on_rollcall_picked(names)
+            except Exception:                        # noqa: BLE001
+                pass
+            return inner(names, *args, **kwargs)
+
+        try:
+            # 实例属性优先于类属性，所以只影响这个插件对象，不改它的源码。
+            # 记住原始回调：引擎重载后再包一次不会层层套娃。
+            rc._rollcall_orig_on_pick = inner
+            rc._on_pick = _patched_pick
+        except Exception as e:                       # noqa: BLE001
+            logger.debug("[automations] 包接点名出结果回调失败: {}", e)
+            return False
+        return True
 
     def _on_rollcall_start(self, _count=None) -> None:
         self._rc_start_seq = getattr(self, "_rc_start_seq", 0) + 1
