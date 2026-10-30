@@ -48,7 +48,10 @@ class AutomationsWidgetBackend(QObject):
         except Exception:
             active = 0
 
-        # 当前（或刚刚结束、仍在展示期内的）执行态
+        # 当前（或刚刚结束、仍在展示期内的）执行态。
+        # 只回组件真正会读的字段：组件（qml/widget.qml）用的是 name / index /
+        # total，steps 明细和 done 没人读 —— 以前每秒 4 次把这份明细序列化一遍
+        # 送进 QML，纯属白烧 CPU（弱机上会让组件动画发顿）。
         exec_state = None
         try:
             snap = engine.exec_snapshot()
@@ -57,8 +60,6 @@ class AutomationsWidgetBackend(QObject):
                     "name": snap.get("name") or "自动化",
                     "index": snap.get("index", 0),
                     "total": snap.get("total", 0),
-                    "done": bool(snap.get("done")),
-                    "steps": snap.get("steps") or [],
                 }
         except Exception:
             exec_state = None

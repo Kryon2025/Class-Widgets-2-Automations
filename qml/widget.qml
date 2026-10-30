@@ -43,7 +43,11 @@ Widget {
     Component.onCompleted: refresh()
 
     Timer {
-        interval: 250
+        // 有自动化正在执行（或编辑态预览）时才需要 250ms 刷新进度环；
+        // 平时组件根本不显示，却仍每秒 4 次跨 QML/Python 边界取状态、
+        // 重建 JSON 对象 —— 在弱机（一体机）上是白占 CPU / 内存。
+        // 空闲时降到 1s：组件要出现得靠这里发现执行态，所以不能停。
+        interval: (editMode || root.ex !== null) ? 250 : 1000
         repeat: true
         running: true
         onTriggered: root.refresh()

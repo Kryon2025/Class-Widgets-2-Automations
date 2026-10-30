@@ -225,6 +225,9 @@ PluginPage {
     property int ruleCount: 0
     property int actCount: 0
     property string statusText: ""
+    // 保存结果用 InfoBar 表达（RinUI 的写法），标题/正文/成败分开存
+    property string statusTitle: ""
+    property bool statusOk: true
     property var flags: ({})
     property var subjects: []
     property var teachers: []
@@ -345,6 +348,8 @@ PluginPage {
             page.hintDismissed = (hints && typeof hints === "object") ? hints : ({})
         } catch (e) { page.hintDismissed = ({}) }
         statusText = ""
+        statusTitle = ""
+        if (page.visible) page.pollActive()
     }
 
     function loadRule() {
@@ -375,20 +380,14 @@ PluginPage {
 
     function save() {
         if (!backend) return false
-        // 诊断：打印 page.rules 里 notify 行动此刻实际带的 p5/p6
-        try {
-            for (var i = 0; i < page.rules.length; i++) {
-                var _a = (page.rules[i] && page.rules[i].actions) || []
-                for (var j = 0; j < _a.length; j++) {
-                    if (_a[j] && _a[j].type === "notify")
-                        console.log("[automations] save 规则" + i + " 行动" + j
-                                    + " p5=" + _a[j].p5 + " p6=" + _a[j].p6
-                                    + " keys=" + Object.keys(_a[j]).join(","))
-                }
-            }
-        } catch (e) { console.log("[automations] save 诊断异常:", e) }
+        // 一次保存只做一件事：把整份规则交给引擎（去重、合并落盘都由引擎负责）。
+        // 以前这里还留了一段「把每条 notify 行动的 p5/p6 打印出来」的诊断循环，
+        // 每次保存都把全部规则翻一遍写日志 —— 调完那个 bug 就该删掉的死代码。
         var ok = backend.saveRulesJson(JSON.stringify(page.rules))
-        statusText = ok ? "已保存（共 " + page.rules.length + " 条自动化）" : "保存失败（详见主程序日志）"
+        page.statusOk = ok
+        page.statusTitle = ok ? "已保存" : "保存失败"
+        statusText = ok ? ("共 " + page.rules.length + " 条自动化，已写入配置。")
+                        : "写入配置失败，详见主程序日志。"
         if (ok) saveTimer.restart()
         return ok
     }
@@ -405,13 +404,16 @@ PluginPage {
         page.save()
     }
 
+    // 状态点颜色一律取主题里的 System 色（与 RinUI 保持一致），不写死色值，
+    // 深/浅主题切换时自动跟着变。
     function cardStateColor(ruleObj) {
-        if (!ruleObj) return "#9e9e9e"
-        if (!ruleObj.enabled) return "#e53935"            // 红：已停用
+        var c = Theme.currentTheme.colors
+        if (!ruleObj) return c.systemNeutralColor
+        if (!ruleObj.enabled) return c.systemCriticalColor        // 红：已停用
         var uids = page.activeUids || []
         for (var i = 0; i < uids.length; i++)
-            if (uids[i] === ruleObj.uid) return "#43a047" // 绿：运行中（正在生效）
-        return "#1e88e5"                                  // 蓝：待命（已启用、未生效）
+            if (uids[i] === ruleObj.uid) return c.systemSuccessColor  // 绿：运行中
+        return c.primaryColor                                     // 蓝：待命
     }
 
     // 轮询引擎「当前已生效」的自动化，驱动卡片绿点
@@ -429,15 +431,25 @@ PluginPage {
         }
     }
 
+    function pollActive() {
+        if (!backend) { page.activeUids = []; return }
+        try { page.activeUids = JSON.parse(backend.activeRuleUidsJson() || "[]") }
+        catch (e) { page.activeUids = [] }
+    }
+
+    // 只在页面真的显示时轮询：以前不管页面在不在前台都每秒跨一次
+    // QML/Python 边界、把整页卡片的状态点重算一遍 —— 切开页面后纯属空转。
     Timer {
         id: activePoll
         interval: 1000
         repeat: true
-        running: !!backend
-        onTriggered: {
-            try { page.activeUids = JSON.parse(backend.activeRuleUidsJson() || "[]") }
-            catch (e) { page.activeUids = [] }
-        }
+        running: page.visible && !!backend
+        onTriggered: page.pollActive()
+    }
+
+    Connections {
+        target: page
+        function onVisibleChanged() { if (page.visible) page.pollActive() }
     }
 
     // ── 编辑页开合（草稿式：改动先落在草稿上）────────────────
@@ -449,6 +461,7 @@ PluginPage {
         page.draft = page.cloneRule(page.rules[i])
         page.editing = true
         statusText = ""
+        statusTitle = ""
         // 先只把面板建出来，数据留到下一个事件循环再填。
         // 否则 Repeater 会在「创建 delegate 的过程中」被要求换 Loader 组件、
         // 写字段，属于视图构建中途改数据，主程序会在这条路径上崩溃。
@@ -492,7 +505,9 @@ PluginPage {
         var i = page.draftIndex
         if (!page.applyDraft()) return
         backend.fireRuleNow(i)
-        statusText = "已执行一次（详情见主程序日志）"
+        page.statusOk = true
+        page.statusTitle = "已试运行"
+        statusText = "已试运行一次，详情见主程序日志。"
     }
 
     function askDelete() {
@@ -539,6 +554,7 @@ PluginPage {
         page.draft = page.cloneRule(fresh)
         page.editing = true
         statusText = ""
+        statusTitle = ""
         // 先只把面板建出来，数据留到下一个事件循环再填。
         // 否则 Repeater 会在「创建 delegate 的过程中」被要求换 Loader 组件、
         // 写字段，属于视图构建中途改数据，主程序会在这条路径上崩溃。
@@ -2625,12 +2641,14 @@ PluginPage {
             }
         }
 
-        Text {
+        // 保存结果按 RinUI 的方式表达（InfoBar，与主程序保存日程同一套）
+        InfoBar {
             Layout.fillWidth: true
-            visible: page.statusText.length > 0
+            severity: page.statusOk ? Severity.Success : Severity.Error
+            title: page.statusTitle
             text: page.statusText
-            opacity: 0.62
-            wrapMode: Text.Wrap
+            closable: false
+            visible: page.statusText.length > 0
         }
 
         Text {
@@ -2816,7 +2834,7 @@ PluginPage {
         // 遮罩：淡入淡出（原来由 Popup 自带的背景承担）
         Rectangle {
             anchors.fill: parent
-            color: "#66000000"
+            color: Theme.currentTheme.colors.backgroundSmokeColor
             opacity: page.editing ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 200 } }
         }
@@ -2858,11 +2876,6 @@ PluginPage {
                         typography: Typography.Subtitle
                         text: page.draftIsNew ? "新建自动化" : "编辑自动化"
                     }
-                    Text {
-                        typography: Typography.Caption
-                        opacity: 0.7
-                        text: page.statusText
-                    }
                 }
 
                 RowLayout {
@@ -2876,7 +2889,10 @@ PluginPage {
                         flat: true
                         contentItem: Text {
                             text: parent.text
-                            color: page.draftIsNew ? "#8a8a8a" : "#d13438"
+                            // 颜色跟随主题：放弃新建=次要文字色，删除=系统错误色
+                            color: page.draftIsNew
+                                   ? Theme.currentTheme.colors.textSecondaryColor
+                                   : Theme.currentTheme.colors.systemCriticalColor
                             font: parent.font
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
@@ -2886,7 +2902,22 @@ PluginPage {
                     Button { text: "测试执行"; onClicked: page.testDraft() }
                     Item { Layout.fillWidth: true }
                     Button { text: "取消"; onClicked: page.closeEditor(false) }
-                    Button { text: "保存"; highlighted: true; onClicked: page.closeEditor(true) }
+                    // 与主程序的「保存」按钮同一写法：高亮 + 保存图标
+                    Button {
+                        text: "保存"
+                        highlighted: true
+                        icon.name: "ic_fluent_save_20_regular"
+                        onClicked: page.closeEditor(true)
+                    }
+                }
+
+                InfoBar {
+                    Layout.fillWidth: true
+                    severity: page.statusOk ? Severity.Success : Severity.Error
+                    title: page.statusTitle
+                    text: page.statusText
+                    closable: false
+                    visible: page.statusText.length > 0
                 }
 
                 ScrollView {
@@ -3304,7 +3335,7 @@ PluginPage {
             }
         }
 
-        Rectangle { anchors.fill: parent; color: "#66000000" }
+        Rectangle { anchors.fill: parent; color: Theme.currentTheme.colors.backgroundSmokeColor }
 
         Rectangle {
             id: pickSheet
@@ -3433,7 +3464,7 @@ PluginPage {
         z: 1150
         visible: page.listPicking
 
-        Rectangle { anchors.fill: parent; color: "#66000000" }
+        Rectangle { anchors.fill: parent; color: Theme.currentTheme.colors.backgroundSmokeColor }
 
         Rectangle {
             id: listPickSheet

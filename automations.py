@@ -233,6 +233,10 @@ class RuleEngine(QObject):
         self._provider = None
         self._notify_unregistered_warned = False
         self._prev_status = ""
+        # 落盘状态：上次写成功的内容签名、延迟合并保存的标记
+        self._saved_sig: Optional[str] = None
+        self._save_pending = False
+        self._save_queued = False
 
         self._tick_timer = QTimer(self)   # 兜底 tick（若未注册官方任务）
         self._tick_timer.setInterval(1000)
@@ -317,32 +321,115 @@ class RuleEngine(QObject):
             logger.warning("[automations] 应用配置失败: {}", e)
         if migrated:
             self.save()                                  # 立即固化成新格式
+        else:
+            # 记下「磁盘里已经是这份内容」，之后没有改动就不必再写一遍
+            self._saved_sig = self._signature(self._payload())
         self._prev_status = self._safe_status()
 
+    # ── 持久化 ──────────────────────────────────────────────
+
+    @classmethod
+    def _strip_runtime(cls, obj):
+        """落盘前去掉规则里的运行时游标（`_fp` / `_lt` / `_rc_seq` …）。
+
+        这些下划线键是引擎每秒判定时写进触发器字典的「上次触发标记」，
+        不是用户设置。以前原样存进配置：每触发一次，配置内容就变一点，
+        于是又白白多一次写盘，磁盘里的配置也越来越像运行状态。
+        """
+        if isinstance(obj, dict):
+            return {k: cls._strip_runtime(v) for k, v in obj.items()
+                    if not str(k).startswith("_")}
+        if isinstance(obj, list):
+            return [cls._strip_runtime(v) for v in obj]
+        return obj
+
+    def _payload(self) -> dict:
+        """当前状态对应的、可以落盘的配置内容。"""
+        return {"rules": self._strip_runtime(self._rules),
+                "flags": dict(self._flags),
+                "ext": dict(self._ext),
+                "hints": dict(self._hints)}
+
+    @staticmethod
+    def _signature(payload: dict) -> str:
+        try:
+            return json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                              separators=(",", ":"))
+        except Exception:                                # noqa: BLE001
+            return ""
+
     def save(self) -> bool:
-        """先写官方配置模型，再写一份 JSON 作为安全网。"""
+        """把当前状态写进配置（内容没变时一次盘都不写）。
+
+        为什么这么抠：
+
+        · 主程序每 save 一次，都要把整份配置（含所有插件配置）序列化写盘；
+        · 而插件配置模型的每个字段赋值，SDK 都会把整份配置深拷贝一遍并发出
+          configChanged —— 界面上所有 `Configs.data.*` 绑定随之重算。
+          旧写法一次保存连做 4 遍（rules / flags / ext / hints 逐个赋值），
+          等于一次保存触发 4 轮全界面重算，弱机（一体机）上就是点一下卡一下。
+
+        现在：内容与上次落盘一致就直接返回；只赋值真正变化的字段（最多通知
+        主程序一次）；官方配置接口可用时不再重复写一份同内容的 JSON。
+        """
+        payload = self._payload()
+        sig = self._signature(payload)
+        if sig and sig == self._saved_sig:
+            return True                                  # 没变化：不写、不通知界面
+
         ok = False
         model = self._model()
         if model is not None:
             try:
-                model.rules = list(self._rules)
-                model.flags = dict(self._flags)
-                model.ext = dict(self._ext)
-                model.hints = dict(self._hints)
-                self._api.config.save()
+                changed = False
+                for field in ("rules", "flags", "ext", "hints"):
+                    value = payload[field]
+                    if getattr(model, field, None) != value:
+                        setattr(model, field, value)
+                        changed = True
+                if changed:
+                    self._api.config.save()
                 ok = True
             except Exception as e:                       # noqa: BLE001
                 logger.warning("[automations] 写入官方配置失败: {}", e)
-        try:
-            self._storage.parent.mkdir(parents=True, exist_ok=True)
-            payload = {"rules": self._rules, "flags": self._flags,
-                       "ext": self._ext, "hints": self._hints}
-            self._storage.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            ok = True
-        except Exception as e:                           # noqa: BLE001
-            logger.warning("[automations] 保存 JSON 失败: {}", e)
+
+        if not ok:
+            # 拿不到官方配置接口（老宿主 / 注册失败）时才写 JSON 兜底：
+            # 有模型时这份文件内容与 configs.json 完全重复，只是多一次磁盘写入。
+            try:
+                self._storage.parent.mkdir(parents=True, exist_ok=True)
+                self._storage.write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+                ok = True
+            except Exception as e:                       # noqa: BLE001
+                logger.warning("[automations] 保存 JSON 失败: {}", e)
+
+        if ok:
+            self._saved_sig = sig
         return ok
+
+    def save_soon(self) -> None:
+        """延后合并落盘：执行链里的保存不需要立刻写盘。
+
+        「设标志」「跑完自动停用」这类保存发生在定时器 / 信号回调里，
+        既不该在回调里同步写盘（会重入主程序的保存流程），
+        也可能一秒内连着来好几次 —— 合并成一次即可。
+        """
+        self._save_pending = True
+        if self._save_queued:
+            return
+        self._save_queued = True
+        QTimer.singleShot(300, self._flush_save)
+
+    def _flush_save(self) -> None:
+        self._save_queued = False
+        if not self._save_pending:
+            return
+        self._save_pending = False
+        try:
+            self.save()
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 延迟保存失败: {}", e)
 
     # ── 扩展功能开关 ────────────────────────────────────────
 
@@ -738,10 +825,8 @@ class RuleEngine(QObject):
         rule = st.get("rule") or {}
         if not rule.get("revert") and rule.get("enabled"):
             rule["enabled"] = False
-            try:
-                self.save()
-            except Exception as e:
-                logger.warning("[automations] 自动停用保存失败: {}", e)
+            # 合并落盘（这里在动作链回调里，不能同步写盘）
+            self.save_soon()
             logger.info("[automations] 无恢复：执行完毕，已自动停用「{}」", rule.get("name"))
             cb = getattr(self, "on_rules_changed", None)
             if callable(cb):
@@ -1005,11 +1090,17 @@ class RuleEngine(QObject):
             return None
 
     def _set_widget_layer_hidden(self, hidden: bool) -> bool:
-        """改小组件层的隐藏开关并落盘（不落盘窗口属性不会真正生效）。"""
+        """改小组件层的隐藏开关（落盘交给合并保存）。
+
+        以前在这里同步调用主程序的 save()：本方法是从定时器 / 信号回调里
+        被调用的，同步写盘属于重入（见 _commit_config 的说明，那是这类崩溃的
+        典型成因）；而且「临时恢复显示 → 播完还原」会连着写两次盘。
+        界面效果不看磁盘 —— 主程序读的是内存里的实时配置，所以延后合并即可。
+        """
         try:
             gc = self._api.globalconfig
             gc.configs.interactions.hide.state = bool(hidden)
-            gc.save()
+            self._commit_config()
             return True
         except Exception as e:                           # noqa: BLE001
             logger.warning("[automations] 改写「隐藏小组件」失败: {}", e)
@@ -1074,7 +1165,8 @@ class RuleEngine(QObject):
         if uid and uid in self._active:
             self._active[uid]["flags"].setdefault(name, self._flag_originals[name])
         self._flags[name] = value
-        self.save()
+        # 合并落盘：设标志可能在一次执行里连着来几条，不必每条都写一次盘
+        self.save_soon()
 
     def _do_set_config(self, a: dict, uid: Optional[str]) -> None:
         key = str(a.get("p1") or "")
@@ -1624,6 +1716,13 @@ class RuleEngine(QObject):
             self._tick_timer.stop()
         except Exception:
             pass
+        # 退出前把还没合并的改动落盘，别丢「自动停用」「设标志」这类结果
+        try:
+            if self._save_pending:
+                self._save_pending = False
+                self.save()
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 退出前保存失败: {}", e)
 
     # ── 清洗 ────────────────────────────────────────────────
 
