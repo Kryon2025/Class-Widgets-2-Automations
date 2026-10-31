@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 from pathlib import Path
 
@@ -290,6 +291,89 @@ class Plugin(CW2Plugin):
             return False
         self._engine.load()
         return True
+
+    # ── 规则导出 / 导入 ─────────────────────────────────────
+    # 文件选择框只在用户点按钮时打开（主动触发的模态框，不参与 QML 布局）。
+
+    @staticmethod
+    def _default_file_dir() -> str:
+        """给文件框一个像样的默认目录：桌面 → 文档 → 家目录。"""
+        try:
+            from PySide6.QtCore import QStandardPaths
+            for loc in (QStandardPaths.StandardLocation.DesktopLocation,
+                        QStandardPaths.StandardLocation.DocumentsLocation,
+                        QStandardPaths.StandardLocation.HomeLocation):
+                d = QStandardPaths.writableLocation(loc)
+                if d and Path(d).is_dir():
+                    return d
+        except Exception:                                # noqa: BLE001
+            pass
+        return str(Path.home())
+
+    @Slot(result=str)
+    def pickExportPath(self) -> str:
+        """选导出位置，返回文件路径（取消返回空串）。"""
+        try:
+            from PySide6.QtWidgets import QFileDialog
+            name = "自动化规则-%s.json" % datetime.datetime.now().strftime("%Y%m%d-%H%M")
+            default = str(Path(self._default_file_dir()) / name)
+            path, _ = QFileDialog.getSaveFileName(
+                None, "导出自动化规则", default,
+                "JSON 文件 (*.json);;所有文件 (*.*)")
+            path = (path or "").strip()
+            if path and not path.lower().endswith(".json"):
+                path += ".json"
+            return path
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 打开导出对话框失败: {}", e)
+            return ""
+
+    @Slot(str, result=str)
+    def exportRules(self, path: str) -> str:
+        """把全部规则写到 path；返回结果 JSON（ok / count / message）。"""
+        if self._engine is None:
+            return json.dumps({"ok": False, "message": "引擎未就绪"}, ensure_ascii=False)
+        try:
+            return json.dumps(self._engine.export_rules(path), ensure_ascii=False)
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 导出规则失败: {}", e)
+            return json.dumps({"ok": False, "message": str(e)}, ensure_ascii=False)
+
+    @Slot(result=str)
+    def pickImportPath(self) -> str:
+        """选要导入的文件，返回路径（取消返回空串）。"""
+        try:
+            from PySide6.QtWidgets import QFileDialog
+            path, _ = QFileDialog.getOpenFileName(
+                None, "导入自动化规则", self._default_file_dir(),
+                "JSON 文件 (*.json);;所有文件 (*.*)")
+            return (path or "").strip()
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 打开导入对话框失败: {}", e)
+            return ""
+
+    @Slot(str, result=str)
+    def previewImport(self, path: str) -> str:
+        """导入前预览：只读文件，返回条数与名称（不改规则）。"""
+        if self._engine is None:
+            return json.dumps({"ok": False, "message": "引擎未就绪"}, ensure_ascii=False)
+        try:
+            return json.dumps(self._engine.preview_import(path), ensure_ascii=False)
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 预览导入文件失败: {}", e)
+            return json.dumps({"ok": False, "message": str(e)}, ensure_ascii=False)
+
+    @Slot(str, str, bool, result=str)
+    def importRules(self, path: str, mode: str, disable: bool) -> str:
+        """按 mode（merge / replace）导入规则；disable=True 时导入的规则先设为停用。"""
+        if self._engine is None:
+            return json.dumps({"ok": False, "message": "引擎未就绪"}, ensure_ascii=False)
+        try:
+            return json.dumps(self._engine.import_rules(path, mode, bool(disable)),
+                              ensure_ascii=False)
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 导入规则失败: {}", e)
+            return json.dumps({"ok": False, "message": str(e)}, ensure_ascii=False)
 
     @Slot(result=str)
     def getFlagsJson(self) -> str:

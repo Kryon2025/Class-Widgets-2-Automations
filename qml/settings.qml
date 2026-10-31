@@ -228,6 +228,9 @@ PluginPage {
     // 保存结果用 InfoBar 表达（RinUI 的写法），标题/正文/成败分开存
     property string statusTitle: ""
     property bool statusOk: true
+    // 导入流程：选中文件的路径，以及文件里的条数（供确认框显示）
+    property string importPath: ""
+    property int importCount: 0
     property var flags: ({})
     property var subjects: []
     property var teachers: []
@@ -390,6 +393,78 @@ PluginPage {
                         : "写入配置失败，详见主程序日志。"
         if (ok) saveTimer.restart()
         return ok
+    }
+
+    // ── 导出 / 导入（规则可以在机器之间搬）──────────────────
+    // 文件选择框由 Python 侧打开；这里只管按钮、确认框和结果提示。
+
+    function setStatus(title, text, ok) {
+        page.statusOk = !!ok
+        page.statusTitle = title || ""
+        statusText = text || ""
+        if (ok) saveTimer.restart()
+    }
+
+    function beginExport() {
+        if (!backend || !backend.pickExportPath || !backend.exportRules) return
+        if (page.rules.length === 0) {
+            page.setStatus("没有可导出的规则", "先新建一条自动化，再点「导出」。", false)
+            return
+        }
+        var path = backend.pickExportPath()
+        if (!path) return                       // 用户取消了
+        var res = {}
+        try { res = JSON.parse(backend.exportRules(path) || "{}") } catch (e) { res = {} }
+        if (res.ok)
+            page.setStatus("已导出", "共 " + res.count + " 条自动化已写入文件。", true)
+        else
+            page.setStatus("导出失败", res.message || "详见主程序日志。", false)
+    }
+
+    function beginImport() {
+        if (!backend || !backend.pickImportPath || !backend.importRules) return
+        var path = backend.pickImportPath()
+        if (!path) return                       // 用户取消了
+        var info = {}
+        try { info = JSON.parse(backend.previewImport(path) || "{}") } catch (e) { info = {} }
+        if (!info.ok) {
+            page.setStatus("导入失败", info.message || "这个文件读不出来。", false)
+            return
+        }
+        page.importPath = path
+        page.importCount = info.count || 0
+        var names = info.names || []
+        var preview = names.length > 0
+                      ? ("例如：" + names.join("、") + (page.importCount > names.length ? " …" : ""))
+                      : ""
+        importSummary.text = "文件里有 " + page.importCount + " 条自动化。" + (preview ? "\n" + preview : "")
+        importMerge.checked = true            // 每次打开都回到最常用的默认值
+        importDisable.checked = false
+        importDialog.open()
+    }
+
+    function doImport() {
+        var path = page.importPath
+        page.importPath = ""
+        if (!path || !backend || !backend.importRules) return
+        var mode = importReplace.checked ? "replace" : "merge"
+        var disabled = importDisable.checked
+        var res = {}
+        try { res = JSON.parse(backend.importRules(path, mode, disabled) || "{}") } catch (e) { res = {} }
+        if (!res.ok) {
+            page.setStatus("导入失败", res.message || "详见主程序日志。", false)
+            return
+        }
+        page.reload()                           // 规则变了：卡片重新读一遍
+        if (res.added > 0) {
+            var extra = res.skipped > 0 ? ("，跳过 " + res.skipped + " 条重复/无效的") : ""
+            if (disabled) extra += "，并已设为停用"
+            page.setStatus("已导入",
+                           "新增 " + res.added + " 条" + extra + "，当前共 " + res.total + " 条自动化。",
+                           true)
+        } else {
+            page.setStatus("没有导入", res.message || "全部重复，未做改动。", true)
+        }
     }
 
     // ── 卡片：右下角开关 & 右上角状态点 ────────────────────────
@@ -2565,6 +2640,16 @@ PluginPage {
                         text: "自动化"
                         Layout.fillWidth: true
                     }
+                    Button {
+                        text: "导入"
+                        icon.name: "ic_fluent_arrow_import_20_regular"
+                        onClicked: page.beginImport()
+                    }
+                    Button {
+                        text: "导出"
+                        icon.name: "ic_fluent_arrow_export_20_regular"
+                        onClicked: page.beginExport()
+                    }
                     Button { text: "刷新"; onClicked: Qt.callLater(page.reload) }
                 }
                 Text {
@@ -3568,6 +3653,53 @@ PluginPage {
                         onClicked: page.acceptListPick(page.listPickIndex)
                     }
                 }
+            }
+        }
+    }
+
+    // ══════════════ 导入确认：合并 or 替换 ══════════════
+    ButtonGroup { id: importModeGroup }
+
+    Dialog {
+        id: importDialog
+        modal: true
+        title: "导入自动化"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        width: Math.min(480, Math.max(320, page.width - 96))
+
+        onOpened: {
+            if (footer && footer.okButton) footer.okButton.text = "导入"
+            if (footer && footer.cancelButton) footer.cancelButton.text = "取消"
+        }
+        onAccepted: page.doImport()
+        onRejected: page.importPath = ""      // 取消：清掉待导入路径
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Text {
+                id: importSummary
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: ""
+            }
+            RadioButton {
+                id: importMerge
+                text: "合并到现有规则（重复的自动跳过）"
+                ButtonGroup.group: importModeGroup
+                checked: true
+            }
+            RadioButton {
+                id: importReplace
+                text: "替换全部现有规则（现有规则会被清空）"
+                ButtonGroup.group: importModeGroup
+            }
+            CheckBox {
+                id: importDisable
+                // 从别的机器拿来的规则可能带「关机 / 重启」这类行动：
+                // 默认让它导入后先停着，用户确认过再启用。
+                text: "导入后先设为停用（确认无误再手动启用）"
             }
         }
     }

@@ -431,6 +431,164 @@ class RuleEngine(QObject):
         except Exception as e:                           # noqa: BLE001
             logger.warning("[automations] 延迟保存失败: {}", e)
 
+    # ── 导出 / 导入（规则可带到别的机器上用）─────────────────
+
+    RULES_FILE_SCHEMA = "com.kryon.automations.rules"
+    RULES_FILE_VERSION = 1
+    MAX_IMPORT_BYTES = 2 * 1024 * 1024      # 2 MB：正常规则文件远低于这个数
+    MAX_IMPORT_RULES = 1000                 # 一次性最多导入这么多条
+
+    def _plugin_version(self) -> str:
+        """本插件的版本号（写进导出文件，方便排查兼容性）。"""
+        try:
+            meta = json.loads(
+                (Path(__file__).resolve().parent / "cwplugin.json")
+                .read_text(encoding="utf-8"))
+            return str(meta.get("version") or "")
+        except Exception:                                # noqa: BLE001
+            return ""
+
+    @staticmethod
+    def _rule_key(rule: dict) -> str:
+        """规则指纹（不含 uid）：用来判重，同一份规则导两次不会重复。"""
+        data = {k: v for k, v in (rule or {}).items() if k != "uid"}
+        try:
+            return json.dumps(data, ensure_ascii=False, sort_keys=True,
+                              separators=(",", ":"))
+        except Exception:                                # noqa: BLE001
+            return ""
+
+    @staticmethod
+    def _extract_rules(raw) -> list:
+        """从导入内容里取出规则列表。
+
+        兼容三种写法：本插件导出的信封（带 rules）、直接一个数组、
+        以及老版本的配置文件（{"rules": [...]}）。
+        """
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, dict):
+            value = raw.get("rules")
+            if isinstance(value, list):
+                return value
+        return []
+
+    def export_rules(self, path) -> dict:
+        """把当前全部规则写成一个 JSON 文件（带版本信封）。"""
+        target = Path(str(path or ""))
+        if not str(target):
+            return {"ok": False, "message": "没有选择保存位置"}
+        payload = {
+            "schema": self.RULES_FILE_SCHEMA,
+            "version": self.RULES_FILE_VERSION,
+            "exported_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "plugin_version": self._plugin_version(),
+            "count": len(self._rules),
+            "rules": self._strip_runtime(self._rules),
+        }
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            # 先写临时文件再替换：导出中途失败也不会留下半个坏文件
+            tmp = target.with_name(target.name + ".tmp")
+            tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+            os.replace(tmp, target)
+        except Exception as e:                           # noqa: BLE001
+            return {"ok": False, "message": f"写文件失败：{e}"}
+        logger.info("[automations] 已导出 {} 条规则到 {}", payload["count"], target)
+        return {"ok": True, "count": payload["count"], "path": str(target)}
+
+    def _read_import_file(self, path) -> tuple[Optional[list], Optional[str], dict]:
+        """读导入文件，返回 (规则列表, 错误信息, 文件信息)。不改任何状态。"""
+        target = Path(str(path or ""))
+        try:
+            if not target.is_file():
+                return None, "文件不存在", {}
+            if target.stat().st_size > self.MAX_IMPORT_BYTES:
+                return None, "文件太大（超过 2 MB）", {}
+            # utf-8-sig：Windows 记事本另存的文件常带 BOM
+            raw = json.loads(target.read_text(encoding="utf-8-sig"))
+        except Exception as e:                           # noqa: BLE001
+            return None, f"这个文件不是有效的 JSON：{e}", {}
+        items = self._extract_rules(raw)
+        if not items:
+            return None, "文件里没有自动化规则", {}
+        info = {}
+        if isinstance(raw, dict):
+            info = {"schema": str(raw.get("schema") or ""),
+                    "plugin_version": str(raw.get("plugin_version") or ""),
+                    "exported_at": str(raw.get("exported_at") or "")}
+        return items, None, info
+
+    def preview_import(self, path) -> dict:
+        """导入前的预览：只读文件，返回条数与名称，不改规则、不落盘。"""
+        items, err, info = self._read_import_file(path)
+        if items is None:
+            return {"ok": False, "message": err or "读不出文件"}
+        names = []
+        for item in items:
+            if isinstance(item, dict):
+                name = str(item.get("name") or "").strip()
+                if name and name not in names:
+                    names.append(name)
+        result = {"ok": True, "count": len(items), "names": names[:5],
+                  "path": str(Path(str(path)))}
+        result.update({k: v for k, v in info.items() if v})
+        return result
+
+    def import_rules(self, path, mode: str = "merge", disable: bool = False) -> dict:
+        """导入规则。
+
+        mode    = "merge"   合并到现有规则（重复的跳过，撞号的 uid 重新分配）
+                  "replace" 用文件里的规则替换全部现有规则
+        disable = True 时把导入的规则一律先设成停用：从别的机器拿来的规则可能带
+                  「关机 / 重启」这类行动，先停着让用户确认过再手动启用更稳妥。
+        """
+        items, err, _info = self._read_import_file(path)
+        if items is None:
+            return {"ok": False, "message": err or "读不出文件"}
+        replace = str(mode or "").strip().lower() in ("replace", "替换", "覆盖")
+        merged = [] if replace else list(self._rules)
+        keys = {self._rule_key(r) for r in merged}
+        uids = {str(r.get("uid") or "") for r in merged if r.get("uid")}
+        added = skipped = 0
+        for item in items:
+            if not isinstance(item, dict):
+                skipped += 1
+                continue
+            if len(merged) >= self.MAX_IMPORT_RULES:
+                skipped += 1
+                continue
+            try:
+                rule = self._clean_rule(item)
+            except Exception:                            # noqa: BLE001
+                skipped += 1
+                continue
+            if disable:
+                rule["enabled"] = False
+            key = self._rule_key(rule)
+            if key and key in keys:
+                skipped += 1                             # 同一份规则，别导两遍
+                continue
+            if str(rule.get("uid") or "") in uids:
+                rule["uid"] = uuid.uuid4().hex[:12]      # 和现有规则撞号：换一个新号
+            uids.add(str(rule.get("uid") or ""))
+            keys.add(key)
+            merged.append(rule)
+            added += 1
+        if added == 0:
+            return {"ok": True, "added": 0, "skipped": skipped,
+                    "total": len(self._rules), "mode": "replace" if replace else "merge",
+                    "message": "没有可导入的新规则（全部重复或无效）"}
+        self._rules = merged
+        self._active.clear()                             # 规则换了，原先那套「待恢复」作废
+        self.save()
+        logger.info("[automations] 导入 {} 条规则（{}），跳过 {} 条",
+                    added, "替换全部" if replace else "合并", skipped)
+        return {"ok": True, "added": added, "skipped": skipped,
+                "total": len(self._rules),
+                "mode": "replace" if replace else "merge"}
+
     # ── 扩展功能开关 ────────────────────────────────────────
 
     def ensure_ext_defaults(self) -> None:
