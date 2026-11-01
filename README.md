@@ -5,7 +5,7 @@
 
 <p>为 Class Widgets 2 提供自动化能力，注册为官方 <code>AutomationTask</code>，随主程序每秒调度，无需自建后台线程。（此插件由Deepseek V4 Flash开发）</p>
 
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-2.0.4-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-2.0.7-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
 [![星标](https://img.shields.io/github/stars/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&color=orange&label=%E6%98%9F%E6%A0%87)](https://github.com/Kryon2025/Class-Widgets-2-Automations)
 [![开源许可](https://img.shields.io/github/license/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/LICENSE)
 [![下载量](https://img.shields.io/github/downloads/Kryon2025/Class-Widgets-2-Automations/total.svg?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=green&style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
@@ -13,7 +13,7 @@
 </div>
 
 > [!NOTE]
-> 当前版本 **2.0.4**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
+> 当前版本 **2.0.7**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
 > 在 [插件广场](https://plaza.cw.rinlit.cn/plugins/com.kryon.automations) 可以一键安装/更新，也可以在 Release 页下载 `.cwplugin` 手动导入。
 
 ## 功能特性
@@ -27,6 +27,7 @@
 - **打开已安装应用**：行动可下拉选择本机已安装的应用（含 UWP/商店应用），也可手填路径、网址或 `shell:AppsFolder\…`，支持启动参数与工作目录。
 - **扩展功能开关**：「随机点名联动」与「系统通知」两个开关收在设置页顶部可展开的「扩展功能」折叠列表里，默认收起；关掉后对应模块不再出现在三个下拉里。随机点名那个首次运行会按本机是否装了点名插件自动定值，之后以你的手动选择为准。
 - **隐藏时也能弹提醒**：「显示提醒」行动可单独开启「在隐藏状态下恢复显示」——小组件层当前是隐藏的，就先临时把那一层放出来，让灵动通知有落脚点；通知播完再自动收回原状（与点名插件同一套做法）。
+- **规则导出 / 导入**：把全部自动化导出成一个 JSON 文件带到别的机器；导入时先预览条数与规则名，再选「合并到现有规则」（重复的自动跳过）或「替换全部现有规则」。还能勾上「导入后先设为停用」，避免别处拿来的关机 / 重启规则立刻生效。
 
 ## 模型
 
@@ -106,6 +107,7 @@
 - 时间类字段用主程序同款的时间选择器，不必手填 `HH:MM`。
 - 列表页顶部有一条**可关闭的「恢复」提示**：没开「恢复」的自动化只执行一次，跑完会自动停用；
   点提示条右上角的 ✕ 关掉后，之后打开设置页不再出现（状态记在本插件配置里）。
+- 页头的「导入」「导出」管规则的搬运：导出的文件带插件版本与导出时间，导入前会先弹出条数与规则名供确认。
 
 ## 定时与闹钟
 
@@ -154,7 +156,7 @@
 1. 安装 `com.kryon.automations.cwplugin`，重启主程序。
 2. 打开「设置 → 自动化」：点「新建自动化」建规则，卡片列表会列出所有自动化；编辑页里「测试执行」可立即试跑，保存后立即生效。
 3. 规则与标志由主程序的 **ConfigAPI** 托管（`register_plugin_model`），改动即时保存；
-   同时在 `configs/plugins/com.kryon.automations.json` 保留一份 JSON 作为安全网。
+   只有在拿不到官方配置接口（较老宿主）时，才回退到 `configs/plugins/com.kryon.automations.json` 保底。
    从旧版本升级时，首次加载会自动把旧 JSON 迁移进新配置，原有规则不丢。
 
 ## 更新日志

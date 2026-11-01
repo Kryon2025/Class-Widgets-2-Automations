@@ -423,6 +423,7 @@ PluginPage {
 
     function beginImport() {
         if (!backend || !backend.pickImportPath || !backend.importRules) return
+        page.importPath = ""                    // 先清掉上一次的残留
         var path = backend.pickImportPath()
         if (!path) return                       // 用户取消了
         var info = {}
@@ -459,9 +460,10 @@ PluginPage {
         if (res.added > 0) {
             var extra = res.skipped > 0 ? ("，跳过 " + res.skipped + " 条重复/无效的") : ""
             if (disabled) extra += "，并已设为停用"
+            if (res.warning) extra += "（注意：" + res.warning + "）"
             page.setStatus("已导入",
                            "新增 " + res.added + " 条" + extra + "，当前共 " + res.total + " 条自动化。",
-                           true)
+                           !res.warning)
         } else {
             page.setStatus("没有导入", res.message || "全部重复，未做改动。", true)
         }

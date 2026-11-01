@@ -449,14 +449,38 @@ class RuleEngine(QObject):
             return ""
 
     @staticmethod
+    def _as_path(path) -> Optional[Path]:
+        """把用户给的路径转成 Path；空字符串返回 None。
+
+        注意不能直接 `Path("")` —— 那等于当前目录，会被当成一个合法路径继续往下走。
+        """
+        raw = str(path or "").strip()
+        return Path(raw) if raw else None
+
+    @staticmethod
     def _rule_key(rule: dict) -> str:
-        """规则指纹（不含 uid）：用来判重，同一份规则导两次不会重复。"""
-        data = {k: v for k, v in (rule or {}).items() if k != "uid"}
+        """规则指纹（不含 uid，也不含「启用」开关）：用来判重。
+
+        不比较 enabled：从别的机器导入同一份规则、只是勾了「先设为停用」时，
+        不该在列表里再冒出一条一模一样（只是停用）的规则。
+        """
+        data = {k: v for k, v in (rule or {}).items() if k not in ("uid", "enabled")}
         try:
             return json.dumps(data, ensure_ascii=False, sort_keys=True,
                               separators=(",", ":"))
         except Exception:                                # noqa: BLE001
             return ""
+
+    @staticmethod
+    def _looks_like_rule(item) -> bool:
+        """像不像一条规则。
+
+        导出的规则一定带 triggers / actions / rulesets 里的至少一个（或者至少有个名字）；
+        只有 `{"type": ...}` 这种残缺对象不算，免得导进来一堆"未命名自动化"。
+        """
+        if not isinstance(item, dict):
+            return False
+        return any(k in item for k in ("triggers", "actions", "rulesets", "ruleset", "name"))
 
     @staticmethod
     def _extract_rules(raw) -> list:
@@ -475,8 +499,8 @@ class RuleEngine(QObject):
 
     def export_rules(self, path) -> dict:
         """把当前全部规则写成一个 JSON 文件（带版本信封）。"""
-        target = Path(str(path or ""))
-        if not str(target):
+        target = self._as_path(path)
+        if target is None:
             return {"ok": False, "message": "没有选择保存位置"}
         payload = {
             "schema": self.RULES_FILE_SCHEMA,
@@ -500,7 +524,9 @@ class RuleEngine(QObject):
 
     def _read_import_file(self, path) -> tuple[Optional[list], Optional[str], dict]:
         """读导入文件，返回 (规则列表, 错误信息, 文件信息)。不改任何状态。"""
-        target = Path(str(path or ""))
+        target = self._as_path(path)
+        if target is None:
+            return None, "没有选择文件", {}
         try:
             if not target.is_file():
                 return None, "文件不存在", {}
@@ -525,14 +551,19 @@ class RuleEngine(QObject):
         items, err, info = self._read_import_file(path)
         if items is None:
             return {"ok": False, "message": err or "读不出文件"}
+        # 只数「能识别的规则对象」：数组里混着的字符串 / 数字不算数，
+        # 否则确认框里会说"有 5 条"，实际只导进来 1 条。
+        candidates = [item for item in items if self._looks_like_rule(item)]
+        if not candidates:
+            return {"ok": False, "message": "文件里没有可识别的自动化规则"}
         names = []
-        for item in items:
-            if isinstance(item, dict):
-                name = str(item.get("name") or "").strip()
-                if name and name not in names:
-                    names.append(name)
-        result = {"ok": True, "count": len(items), "names": names[:5],
-                  "path": str(Path(str(path)))}
+        for item in candidates:
+            name = str(item.get("name") or "").strip()
+            if name and name not in names:
+                names.append(name)
+        target = self._as_path(path)
+        result = {"ok": True, "count": len(candidates), "names": names[:5],
+                  "path": str(target) if target is not None else ""}
         result.update({k: v for k, v in info.items() if v})
         return result
 
@@ -547,13 +578,15 @@ class RuleEngine(QObject):
         items, err, _info = self._read_import_file(path)
         if items is None:
             return {"ok": False, "message": err or "读不出文件"}
+        if not any(self._looks_like_rule(item) for item in items):
+            return {"ok": False, "message": "文件里没有可识别的自动化规则"}
         replace = str(mode or "").strip().lower() in ("replace", "替换", "覆盖")
         merged = [] if replace else list(self._rules)
         keys = {self._rule_key(r) for r in merged}
         uids = {str(r.get("uid") or "") for r in merged if r.get("uid")}
         added = skipped = 0
         for item in items:
-            if not isinstance(item, dict):
+            if not self._looks_like_rule(item):
                 skipped += 1
                 continue
             if len(merged) >= self.MAX_IMPORT_RULES:
@@ -580,14 +613,24 @@ class RuleEngine(QObject):
             return {"ok": True, "added": 0, "skipped": skipped,
                     "total": len(self._rules), "mode": "replace" if replace else "merge",
                     "message": "没有可导入的新规则（全部重复或无效）"}
+        # 规则马上要被换掉：先把还在「生效中」的自动化按原值恢复，
+        # 否则它改过的那批配置就再也没人负责还原了。
+        for uid in list(self._active):
+            try:
+                self._revert(uid)
+            except Exception as e:                       # noqa: BLE001
+                logger.warning("[automations] 导入前恢复失败({}): {}", uid, e)
         self._rules = merged
-        self._active.clear()                             # 规则换了，原先那套「待恢复」作废
-        self.save()
+        self._active.clear()
+        saved = self.save()
         logger.info("[automations] 导入 {} 条规则（{}），跳过 {} 条",
                     added, "替换全部" if replace else "合并", skipped)
-        return {"ok": True, "added": added, "skipped": skipped,
-                "total": len(self._rules),
-                "mode": "replace" if replace else "merge"}
+        result = {"ok": True, "added": added, "skipped": skipped,
+                  "total": len(self._rules),
+                  "mode": "replace" if replace else "merge"}
+        if not saved:
+            result["warning"] = "规则已生效，但写入配置失败（详见主程序日志）"
+        return result
 
     # ── 扩展功能开关 ────────────────────────────────────────
 
