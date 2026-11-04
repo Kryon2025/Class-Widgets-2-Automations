@@ -15,7 +15,7 @@ import ClassWidgets.Plugins
 
 PluginPage {
     id: page
-    pluginId: "com.kryon.automations"
+    pluginId: "org.cslblog.betterautomations"
     title: "自动化"
 
     // 页头只留工具按钮：「随机点名联动 / 系统通知」两个开关已收进
@@ -104,6 +104,7 @@ PluginPage {
             "set_config", "lock", "restart", "open_settings", "set_theme", "power", "volume", "media", "app"]
         if (page.sysNotifyExt) a = a.concat(["sys_notify"])
         if (page.rollcallExt) a = a.concat(["rollcall_roll", "rollcall_set", "rollcall_close"])
+        a = a.concat(["lesson_mode"])
         return a
     }
     readonly property var actLabels: {
@@ -112,8 +113,12 @@ PluginPage {
             "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理"]
         if (page.sysNotifyExt) a = a.concat(["发系统通知"])
         if (page.rollcallExt) a = a.concat(["触发随机点名", "设置随机点名", "关闭点名窗口"])
+        a = a.concat(["课程展示模式"])
         return a
     }
+    // 课程展示模式（联动 com.yersmagit.lessonsdisplayer）
+    property var lessonModes: ["whiteboard", "blackboard", "exit"]
+    property var lessonModeLabels: ["白板模式", "息屏模式", "退出特殊模式"]
 
     // ── 随机点名（com.rollcall）配置项清单（顺序 = 后端 ROLLCALL_SETTERS）
     property var rollcallKeys: ["luck_enabled", "no_repeat", "animation_seconds",
@@ -659,6 +664,7 @@ PluginPage {
             if (page.apps[i] && page.apps[i].target === target) return page.apps[i].name || target
         return String(target || "")
     }
+    function subjectOptions() { return ["（任意课）"].concat(page.subjects) }
     function detailOf(t) {
         if (!t) return ""
         switch (t.type) {
@@ -711,6 +717,9 @@ PluginPage {
             case "rollcall_config": return page.labelOf(page.rollcallKeys, page.rollcallLabels, t.p1)
                 + " = " + (t.p2 || "")
             case "rollcall_close": return "关闭点名窗口"
+            case "class_start": return t.p1 ? ("仅「" + t.p1 + "」") : ""
+            case "class_end": return t.p1 ? ("仅「" + t.p1 + "」") : ""
+            case "lesson_mode": return page.lessonModeLabels[Math.max(0, page.lessonModes.indexOf(t.p1))]
             default: return ""
         }
     }
@@ -867,6 +876,8 @@ PluginPage {
             case "alarm": return trigAlarmComp
             case "rollcall_start": return trigRollcallStartComp
             case "rollcall_picked": return trigRollcallPickedComp
+            case "class_start":
+            case "class_end": return trigSubjectComp
             default: return null
         }
     }
@@ -910,6 +921,7 @@ PluginPage {
             case "rollcall_roll": return actRollcallRollComp
             case "rollcall_set": return actRollcallSetComp
             case "rollcall_close": return actRollcallCloseComp
+            case "lesson_mode": return actLessonModeComp
             default: return null
         }
     }
@@ -1137,6 +1149,26 @@ PluginPage {
                 onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "秒" }
+        }
+    }
+
+    Component {
+        id: trigSubjectComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                var opts = page.subjectOptions()
+                subjCombo.currentIndex = Math.max(0, opts.indexOf(item.p1 || ""))
+            }
+            ComboBox {
+                id: subjCombo
+                Layout.fillWidth: true
+                model: page.subjectOptions()
+                onActivated: if (it) it.p1 = (index === 0 ? "" : page.subjectOptions()[index])
+            }
+            Text { text: "（仅上课/下课触发可限定科目，留「任意课」表示每节都触发）"; opacity: 0.62 }
         }
     }
 
@@ -2114,6 +2146,31 @@ PluginPage {
             property var it: null
             function load(item) { it = item }
             Text { text: "关闭点名结果窗口（滚动中或已定格都能关）" }
+        }
+    }
+
+    Component {
+        id: actLessonModeComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                if (!item.p1) item.p1 = "whiteboard"
+                modeCombo.currentIndex = Math.max(0, page.lessonModes.indexOf(item.p1))
+            }
+            ComboBox {
+                id: modeCombo
+                Layout.fillWidth: true
+                model: page.lessonModeLabels
+                onActivated: if (it) it.p1 = page.lessonModes[index]
+            }
+            Text {
+                text: "需要安装并启用「全量展示课程」插件（com.yersmagit.lessonsdisplayer）。白板模式 = 白底全屏，息屏模式 = 黑底全屏。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
         }
     }
 

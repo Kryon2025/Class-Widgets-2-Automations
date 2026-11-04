@@ -1,12 +1,12 @@
 {
-  "id": "com.kryon.automations",
-  "name": "Kryon的自动化",
-  "version": "2.0.7",
+  "id": "org.cslblog.betterautomations",
+  "name": "更好的自动化",
+  "version": "2.1.0",
   "api_version": "~=0.7.0",
   "entry": "main.py",
-  "author": "Kryon",
-  "description": "为ClassWidgets2提供自动化功能",
-  "url": "https://github.com/Kryon2025/Class-Widgets-2-Automations",
+  "author": "Kryon（由 orange838 修改增强）",
+  "description": "为ClassWidgets2提供自动化功能。由 Kryon 自动化修改而来：新增上课/下课触发可限定科目、新增「课程展示模式」行动（联动全量展示课程插件的白板/息屏模式）",
+  "url": "https://github.com/orange838/Class-Widgets-2-Automations",
   "readme": "README.md",
   "icon": "icon.png"
 }

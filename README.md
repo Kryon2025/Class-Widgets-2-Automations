@@ -3,7 +3,9 @@
 <img src="icon.png" height="120" alt="Kryon的自动化">
 <h1>Kryon 自动化</h1>
 
-<p>为 Class Widgets 2 提供自动化能力，注册为官方 <code>AutomationTask</code>，随主程序每秒调度，无需自建后台线程。（此插件由Deepseek V4 Flash开发）</p>
+<p>为 Class Widgets 2 提供自动化能力，注册为官方 <code>AutomationTask</code>，随主程序每秒调度，无需自建后台线程。</p>
+
+<p><b>本插件是「Kryon 自动化」的修改增强版</b>（由 orange838 基于 Kryon2025/Class-Widgets-2-Automations 修改），在保留全部原有功能的基础上新增：上课/下课触发可限定科目、「课程展示模式」行动（联动「全量展示课程」插件的白板/息屏模式）。</p>
 
 [![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-2.0.7-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
 [![星标](https://img.shields.io/github/stars/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&color=orange&label=%E6%98%9F%E6%A0%87)](https://github.com/Kryon2025/Class-Widgets-2-Automations)
@@ -13,11 +15,13 @@
 </div>
 
 > [!NOTE]
-> 当前版本 **2.0.7**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
-> 在 [插件广场](https://plaza.cw.rinlit.cn/plugins/com.kryon.automations) 可以一键安装/更新，也可以在 Release 页下载 `.cwplugin` 手动导入。
+> 当前版本 **2.1.0**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
+> 由 Kryon 自动化迁移而来的用户无需重新配置：首次启动时会自动复制旧插件的规则。建议迁移后停用或卸载原「Kryon的自动化」插件，避免两套引擎同时触发。
 
 ## 功能特性
 
+- **上课/下课触发可限定科目**（2.1.0 新增）：不上课、不下课两个触发器的字段里多了科目下拉，选中后只有该科目的课才触发；留「任意课」则每节都触发。
+- **「课程展示模式」行动**（2.1.0 新增）：可切换白板模式 / 息屏模式 / 退出特殊模式，联动「全量展示课程」插件（com.yersmagit.lessonsdisplayer）；插件不在场时只记一条警告，不影响其他行动。
 - **触发器 + 规则集 + 行动**三段式自动化：触发器触发 → 规则集过滤 → 依次执行行动。
 - **自动恢复**：开启「恢复」后，逆事件（如下课）或规则集不再满足时，自动还原被修改的配置。
 - **类型专属编辑**：每种触发器/规则/行动选中后只显示自己需要的字段——下拉、开关、数字、时间、文本，无需手填参数。

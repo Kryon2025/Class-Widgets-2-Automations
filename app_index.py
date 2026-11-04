@@ -27,7 +27,7 @@ _CACHE: dict = {"at": 0.0, "apps": []}
 
 # 磁盘缓存：后台线程枚举一次后落盘，设置页只读这个缓存。
 # 放临时目录，避免这个可再生文件被打进 .cwplugin 发布包。
-_CACHE_FILE = Path(tempfile.gettempdir()) / "com.kryon.automations.installed_apps.json"
+_CACHE_FILE = Path(tempfile.gettempdir()) / "org.cslblog.betterautomations.installed_apps.json"
 _prefetch = {"running": False}
 
 CREATE_NO_WINDOW = 0x08000000
