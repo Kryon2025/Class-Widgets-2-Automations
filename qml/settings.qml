@@ -979,6 +979,7 @@ PluginPage {
             property var it: null
             function load(item) { it = item }
             Text { text: "随机点名开始滚动时（无需参数）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -989,6 +990,7 @@ PluginPage {
             property var it: null
             function load(item) { it = item }
             Text { text: "随机点名出结果后（无需参数）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1186,6 +1188,7 @@ PluginPage {
                 onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "秒" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1233,6 +1236,7 @@ PluginPage {
                 onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "秒前（上课/课间开始前触发）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1320,6 +1324,7 @@ PluginPage {
             Text {
                 text: qsTr("秒")
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1363,6 +1368,7 @@ PluginPage {
             Text {
                 text: qsTr("秒")
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1844,6 +1850,7 @@ PluginPage {
                 visible: !isBoolKey()
                 onValueChanged: write()
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -2075,6 +2082,7 @@ PluginPage {
                 onValueChanged: if (!loading) save()
             }
             Text { text: "秒（暂停后再执行下一条行动）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -2140,6 +2148,7 @@ PluginPage {
                 onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "人（一次点名抽几人）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -2190,6 +2199,7 @@ PluginPage {
                 visible: !isBoolKey()
                 onValueChanged: write()
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
