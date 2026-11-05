@@ -3090,12 +3090,10 @@ PluginPage {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        // 等比自适应：面板高度 = 窗口高 × 1.06。
-        //   · 跟窗口等比缩放（放大窗口 → 面板与卡片一起变大）
-        //   · 多出的 6% 让底边必然落在窗口之外，Sheet 底边永远看不见
-        //   · 不要再用「硬凑的边距」去实现探出，那样会把内部 ScrollView 压扁
-        // 配套：ScrollView 设了 bottomPadding 70，正好盖住这 6%，最后一项仍滚得到。
-        height: (page.Window && page.Window.height ? page.Window.height : 640) * 1.06
+        // 高度 = 窗口高 − 64：留出标题栏和底部边距，面板底边完整落在窗口里。
+        // （之前用「窗口高 × 1.06」把底边推出屏幕，结果最下面一段内容被窗口边缘切断；
+        //   仍然用显式值而不是 parent.height，避免和「宿主内容区高度由子项撑开」互相依赖。）
+        height: Math.max(320, (page.Window && page.Window.height ? page.Window.height : 640) - 64)
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
@@ -3138,9 +3136,8 @@ PluginPage {
             // 里面再放三张模块卡（触发器 / 规则集 / 行动），层级和卡片列表页保持一致。
             id: sheet
             width: parent.width - 32
-            // 高度封顶到一个窗口：内容区可滚动，不封顶的话面板会比视口还高，
-            // 底部的按钮就会被挤到看不见的地方。
-            height: parent.height - 32      // 跟随面板（窗口 × 1.06），底边一起探出屏幕
+            // 高度封顶到一个窗口：内容区可滚动，不封顶的话面板会比视口还高。
+            height: parent.height - 32      // 上下各留 16，面板底边（圆角）完整可见
             x: 16
             radius: page.cardRadius
             // 颜色一律跟随主程序主题，不写死颜色值。
@@ -3219,7 +3216,7 @@ PluginPage {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    bottomPadding: 80          // 盖住面板探出屏幕的那 6%，最后一项也滚得到
+                    bottomPadding: 24          // 底部留一点白，最后一项不贴着卡片边
                     ScrollBar.vertical.policy: ScrollBar.AsNeeded
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
