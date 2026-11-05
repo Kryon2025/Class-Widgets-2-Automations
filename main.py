@@ -17,6 +17,7 @@ from PySide6.QtCore import Signal, Slot
 from automations import RuleEngine
 from widget_backend import AutomationsWidgetBackend
 import deps
+import scroll_text
 
 CFG_NAME = "org.cslblog.betterautomations.json"
 
@@ -111,6 +112,12 @@ class Plugin(CW2Plugin):
         except Exception as e:
             logger.warning("[automations] 引擎启动失败: {}", e)
             self._engine = None
+
+        # 全屏文字播放窗口的 GUI 桥（必须在这里建立，on_load 处于 GUI 线程）
+        try:
+            scroll_text.init()
+        except Exception as e:
+            logger.warning("[automations] 全屏文字模块初始化失败: {}", e)
 
         # 检测旧插件是否还在启用：两套引擎并存会让同一条规则触发两次
         try:
@@ -301,6 +308,22 @@ class Plugin(CW2Plugin):
                 pass
         logger.warning("[automations] 旧插件 com.kryon.automations 仍在启用，已提示用户停用")
         return True
+
+    # ── 全屏播放文字 ────────────────────────────────────────
+    @Slot()
+    def openScrollTextEditor(self) -> None:
+        """手动触发：打开输入窗口，输入后直接全屏播放。"""
+        try:
+            scroll_text.open_editor()
+        except Exception as e:                        # noqa: BLE001
+            logger.warning("[automations] 打开全屏文字输入窗口失败: {}", e)
+
+    @Slot(str, int, str, str)
+    def playScrollText(self, text: str, duration: int, speed: str, size: str) -> None:
+        try:
+            scroll_text.show_scroll_text(text, duration, speed, size)
+        except Exception as e:                        # noqa: BLE001
+            logger.warning("[automations] 全屏文字播放失败: {}", e)
 
     @Slot(result=bool)
     def oldPluginConflict(self) -> bool:

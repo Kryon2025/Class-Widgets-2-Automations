@@ -112,6 +112,8 @@ A_ROLLCALL_SET = "rollcall_set"       # 设置随机点名配置项：p1 = 键 p
 A_ROLLCALL_CLOSE = "rollcall_close"   # 关闭点名结果窗口
 # 全量展示课程联动（扩展功能，需 com.yersmagit.lessonsdisplayer 插件在场）
 A_LESSON_MODE = "lesson_mode"         # 课程展示模式：p1 = whiteboard / blackboard / exit
+# 全屏播放文字：p1 = 文字, p2 = 停留时长(秒, 0=自动), p3 = 速度, p4 = 字号
+A_SCROLL_TEXT = "scroll_text"
 
 # 随机点名插件的 id
 ROLLCALL_PLUGIN_ID = "com.rollcall"
@@ -122,7 +124,7 @@ ACTION_TYPES = (A_RUN, A_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
                 A_POWER, A_VOLUME, A_MEDIA, A_SYS_NOTIFY,
                 A_ROLLCALL_ROLL, A_ROLLCALL_SET, A_ROLLCALL_CLOSE,
-                A_LESSON_MODE)
+                A_LESSON_MODE, A_SCROLL_TEXT)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -1139,6 +1141,8 @@ class RuleEngine(QObject):
                 self._do_rollcall_close(action)
             elif atype == A_LESSON_MODE:
                 self._do_lesson_mode(action)
+            elif atype == A_SCROLL_TEXT:
+                self._do_scroll_text(action)
             elif atype == A_WAIT:
                 wait_ms = max(0, int(float(action.get("p1") or 0)) * 1000)
         except Exception as e:
@@ -1635,6 +1639,24 @@ class RuleEngine(QObject):
             return
         fn()
         logger.info("[automations] 课程展示模式 -> {}", mode)
+
+    def _do_scroll_text(self, a: dict) -> None:
+        """全屏播放一段文字：超宽则滚动，否则居中停留指定时长。"""
+        text = str(a.get("p1") or "").strip()
+        if not text:
+            logger.warning("[automations] 全屏文字行动没有填写文字，跳过")
+            return
+        try:
+            dur = int(float(str(a.get("p2") or "0").strip() or 0))
+        except Exception:
+            dur = 0
+        speed = str(a.get("p3") or "normal").strip().lower() or "normal"
+        size = str(a.get("p4") or "normal").strip().lower() or "normal"
+        try:
+            import scroll_text
+            scroll_text.show_scroll_text(text, dur, speed, size)
+        except Exception as e:                        # noqa: BLE001
+            logger.warning("[automations] 全屏文字播放失败: {}", e)
 
     def _rollcall(self):
         """取随机点名插件实例。同进程直接拿对象；未装/未启用则返回 None。"""

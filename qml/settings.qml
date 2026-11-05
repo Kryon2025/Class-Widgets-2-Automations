@@ -24,6 +24,11 @@ PluginPage {
         spacing: 8
 
         Button {
+            text: "全屏播放文字"
+            onClicked: if (backend && backend.openScrollTextEditor) backend.openScrollTextEditor()
+        }
+
+        Button {
             text: "窗口调试"
             onClicked: if (backend) backend.openWindowDebugger()
         }
@@ -105,6 +110,7 @@ PluginPage {
         if (page.sysNotifyExt) a = a.concat(["sys_notify"])
         if (page.rollcallExt) a = a.concat(["rollcall_roll", "rollcall_set", "rollcall_close"])
         a = a.concat(["lesson_mode"])
+        a = a.concat(["scroll_text"])
         return a
     }
     readonly property var actLabels: {
@@ -114,8 +120,14 @@ PluginPage {
         if (page.sysNotifyExt) a = a.concat(["发系统通知"])
         if (page.rollcallExt) a = a.concat(["触发随机点名", "设置随机点名", "关闭点名窗口"])
         a = a.concat(["课程展示模式"])
+        a = a.concat(["全屏播放文字"])
         return a
     }
+    // 全屏播放文字的速度 / 字号档位（与 scroll_text.py 保持一致）
+    property var scrollSpeeds: ["slow", "normal", "fast"]
+    property var scrollSpeedLabels: ["慢", "正常", "快"]
+    property var scrollSizes: ["small", "normal", "large"]
+    property var scrollSizeLabels: ["小", "中", "大"]
     // 课程展示模式（联动 com.yersmagit.lessonsdisplayer）
     property var lessonModes: ["whiteboard", "blackboard", "exit"]
     property var lessonModeLabels: ["白板模式", "息屏模式", "退出特殊模式"]
@@ -720,6 +732,11 @@ PluginPage {
             case "class_start": return t.p1 ? ("仅「" + t.p1 + "」") : ""
             case "class_end": return t.p1 ? ("仅「" + t.p1 + "」") : ""
             case "lesson_mode": return page.lessonModeLabels[Math.max(0, page.lessonModes.indexOf(t.p1))]
+            case "scroll_text": {
+                var s1 = String(t.p1 || "")
+                if (!s1) return "（未填文字）"
+                return "「" + (s1.length > 12 ? s1.slice(0, 12) + "…" : s1) + "」"
+            }
             default: return ""
         }
     }
@@ -922,6 +939,7 @@ PluginPage {
             case "rollcall_set": return actRollcallSetComp
             case "rollcall_close": return actRollcallCloseComp
             case "lesson_mode": return actLessonModeComp
+            case "scroll_text": return actScrollTextComp
             default: return null
         }
     }
@@ -2174,6 +2192,67 @@ PluginPage {
             }
             Text {
                 text: "需要安装并启用「全量展示课程」插件（com.yersmagit.lessonsdisplayer）。白板模式 = 白底全屏，息屏模式 = 黑底全屏。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
+        }
+    }
+
+    Component {
+        id: actScrollTextComp
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                textF.text = item.p1 || ""
+                durSpin.value = parseInt(item.p2 || "0")
+                var si = page.scrollSpeeds.indexOf(item.p3 || "normal")
+                speedCombo.currentIndex = Math.max(0, si)
+                var zi = page.scrollSizes.indexOf(item.p4 || "normal")
+                sizeCombo.currentIndex = Math.max(0, zi)
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                TextField {
+                    id: textF
+                    Layout.fillWidth: true
+                    placeholderText: "要全屏显示的文字"
+                    onTextEdited: if (it) it.p1 = text
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Text { text: "停留" }
+                SpinBox {
+                    id: durSpin
+                    Layout.preferredWidth: 96
+                    from: 0; to: 3600; stepSize: 1; editable: true
+                    onValueChanged: if (it) it.p2 = String(value)
+                }
+                Text { text: "秒（0 = 一直显示到手动退出；文字不超屏时按此停留）" }
+                ComboBox {
+                    id: speedCombo
+                    Layout.preferredWidth: 110
+                    model: page.scrollSpeedLabels
+                    onActivated: if (it) it.p3 = page.scrollSpeeds[index]
+                }
+                Text { text: "速度" }
+                ComboBox {
+                    id: sizeCombo
+                    Layout.preferredWidth: 96
+                    model: page.scrollSizeLabels
+                    onActivated: if (it) it.p4 = page.scrollSizes[index]
+                }
+                Text { text: "字号" }
+                Item { Layout.fillWidth: true }
+            }
+            Text {
+                text: "播放时右键单击或长按 0.7 秒退出（触摸屏长按同样有效）。"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
