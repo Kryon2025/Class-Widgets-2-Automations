@@ -709,7 +709,11 @@ PluginPage {
             case "run": return t.p1 || ""
             case "app": return (t.p4 === "close" ? "关闭 " : "打开 ") + page.appNameOf(t.p1)
             case "notify": return t.p1 || ""
-            case "wait": return t.p1 ? (t.p1 + " 秒") : ""
+            case "wait": {
+                var w = parseInt(t.p1 || "0") || 0
+                if (!w) return ""
+                return (w >= 60 ? (Math.floor(w / 60) + " 分 " + (w % 60) + " 秒") : (w + " 秒"))
+            }
             case "broadcast": return t.p1 || ""
             case "set_flag": return t.p1 || ""
             case "set_config": return page.keyLabelOf(t.p1)
@@ -1025,9 +1029,9 @@ PluginPage {
                     use24Hour: true
                     onTimeChanged: timeRoot.save()
                 }
+                // 时:分:秒 —— 秒跟在时间后面，不要跑到前面去
                 RowLayout {
                     spacing: 4
-                    Text { text: "秒"; opacity: 0.72 }
                     SpinBox {
                         id: secF
                         from: 0
@@ -1036,9 +1040,14 @@ PluginPage {
                         Layout.preferredWidth: 92
                         onValueModified: timeRoot.save()
                     }
+                    Text { text: "秒"; opacity: 0.72 }
                 }
-                Text { text: "星期"; leftPadding: 4; opacity: 0.72 }
-                WeekdayPicker { id: weekBox }
+                // 「星期 + 七个圆点」绑成一组，换行时一起下去
+                RowLayout {
+                    spacing: 6
+                    Text { text: "星期"; opacity: 0.72 }
+                    WeekdayPicker { id: weekBox }
+                }
             }
             Switch {
                 id: skipSw
@@ -1096,7 +1105,6 @@ PluginPage {
                 }
                 RowLayout {
                     spacing: 4
-                    Text { text: "秒"; opacity: 0.72 }
                     SpinBox {
                         id: alarmSec
                         from: 0
@@ -1105,9 +1113,13 @@ PluginPage {
                         Layout.preferredWidth: 92
                         onValueModified: alarmRoot.save()
                     }
+                    Text { text: "秒"; opacity: 0.72 }
                 }
-                Text { text: "星期"; leftPadding: 4; opacity: 0.72 }
-                WeekdayPicker { id: alarmWeek }
+                RowLayout {
+                    spacing: 6
+                    Text { text: "星期"; opacity: 0.72 }
+                    WeekdayPicker { id: alarmWeek }
+                }
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -2033,17 +2045,29 @@ PluginPage {
             spacing: 6
             property var it: null
             property bool loading: false
+            // p1 仍存「总秒数」，老规则直接兼容；界面上拆成 分 + 秒
+            function total() { return Math.max(0, Math.round(minSpin.value) * 60 + Math.round(secSpin.value)) }
+            function save() { if (it) it.p1 = String(total()) }
             function load(item) {
                 it = item
                 loading = true
-                secSpin.value = parseInt(item.p1 || "1")
+                var t = Math.max(0, parseInt(item.p1 || "1") || 0)
+                minSpin.value = Math.floor(t / 60)
+                secSpin.value = t % 60
                 loading = false
             }
             SpinBox {
+                id: minSpin
+                Layout.preferredWidth: 104
+                from: 0; to: 1440; stepSize: 1; editable: true
+                onValueChanged: if (!loading) save()
+            }
+            Text { text: "分" }
+            SpinBox {
                 id: secSpin
-                Layout.preferredWidth: 120
-                from: 0; to: 3600; stepSize: 1; editable: true
-                onValueChanged: if (it) it.p1 = String(Math.round(value))
+                Layout.preferredWidth: 104
+                from: 0; to: 59; stepSize: 1; editable: true
+                onValueChanged: if (!loading) save()
             }
             Text { text: "秒（暂停后再执行下一条行动）" }
         }
