@@ -1205,7 +1205,12 @@ PluginPage {
                 model: page.subjectOptions()
                 onActivated: if (it) it.p1 = (index === 0 ? "" : page.subjectOptions()[index])
             }
-            Text { text: "（仅上课/下课触发可限定科目，留「任意课」表示每节都触发）"; opacity: 0.62 }
+            Text {
+                text: "留「任意课」表示每节都触发"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
         }
     }
 
@@ -2194,7 +2199,11 @@ PluginPage {
             spacing: 6
             property var it: null
             function load(item) { it = item }
-            Text { text: "关闭点名结果窗口（滚动中或已定格都能关）" }
+            Text {
+                text: "关闭点名结果窗口（滚动中或已定格都能关）"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
         }
     }
 
@@ -2248,32 +2257,47 @@ PluginPage {
                     onTextEdited: if (it) it.p1 = text
                 }
             }
-            RowLayout {
+            // Flow：窗口变窄时「速度」「字号」自动折到下一行
+            Flow {
                 Layout.fillWidth: true
-                spacing: 6
-                Text { text: "停留" }
-                SpinBox {
-                    id: durSpin
-                    Layout.preferredWidth: 96
-                    from: 0; to: 3600; stepSize: 1; editable: true
-                    onValueChanged: if (it) it.p2 = String(value)
+                spacing: 12
+                RowLayout {
+                    spacing: 4
+                    Text { text: "停留"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    SpinBox {
+                        id: durSpin
+                        Layout.preferredWidth: 96
+                        from: 0; to: 3600; stepSize: 1; editable: true
+                        onValueChanged: if (it) it.p2 = String(value)
+                    }
+                    Text { text: "秒"; height: 30; verticalAlignment: Text.AlignVCenter }
                 }
-                Text { text: "秒（0 = 一直显示到手动退出；文字不超屏时按此停留）" }
-                ComboBox {
-                    id: speedCombo
-                    Layout.preferredWidth: 110
-                    model: page.scrollSpeedLabels
-                    onActivated: if (it) it.p3 = page.scrollSpeeds[index]
+                RowLayout {
+                    spacing: 4
+                    Text { text: "速度"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    ComboBox {
+                        id: speedCombo
+                        Layout.preferredWidth: 110
+                        model: page.scrollSpeedLabels
+                        onActivated: if (it) it.p3 = page.scrollSpeeds[index]
+                    }
                 }
-                Text { text: "速度" }
-                ComboBox {
-                    id: sizeCombo
-                    Layout.preferredWidth: 96
-                    model: page.scrollSizeLabels
-                    onActivated: if (it) it.p4 = page.scrollSizes[index]
+                RowLayout {
+                    spacing: 4
+                    Text { text: "字号"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    ComboBox {
+                        id: sizeCombo
+                        Layout.preferredWidth: 96
+                        model: page.scrollSizeLabels
+                        onActivated: if (it) it.p4 = page.scrollSizes[index]
+                    }
                 }
-                Text { text: "字号" }
-                Item { Layout.fillWidth: true }
+            }
+            Text {
+                text: "停留 0 秒 = 一直显示到手动退出；文字不超屏时按此停留。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
             }
             Text {
                 text: "播放时右键单击或长按 0.7 秒退出（触摸屏长按同样有效）。"
@@ -3215,28 +3239,51 @@ PluginPage {
                                     text: "基础设置"
                                 }
 
+                                // 名称 / 描述 / 开关各占一行：窗口变窄时输入框只变短、不互相挤压
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 8
-                                        Text { text: "名称"; Layout.preferredWidth: 36 }
+                                        Text {
+                                            text: "名称"
+                                            Layout.preferredWidth: 36
+                                            Layout.minimumWidth: 36
+                                        }
                                         TextField {
                                             id: nameField
                                             Layout.fillWidth: true
-                                            Layout.preferredWidth: 140
+                                            Layout.minimumWidth: 120
                                             placeholderText: "自动化名称"
                                             onTextEdited: page.commit("name", text)
                                         }
-                                        Text { text: "描述"; Layout.preferredWidth: 36 }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Text {
+                                            text: "描述"
+                                            Layout.preferredWidth: 36
+                                            Layout.minimumWidth: 36
+                                        }
                                         TextField {
                                             id: descField
                                             Layout.fillWidth: true
-                                            Layout.preferredWidth: 180
+                                            Layout.minimumWidth: 120
                                             placeholderText: "显示在卡片上的说明（可空）"
                                             onTextEdited: page.commit("description", text)
                                         }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 16
                                         Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
                                         Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
+                                        Item { Layout.fillWidth: true }
                                     }
+                                }
                             }
                         }
 
@@ -3263,7 +3310,9 @@ PluginPage {
                                         spacing: 6
                                         Repeater {
                                             model: page.trigCount
-                                            delegate: RowLayout {
+                                            // ColumnLayout：第一行是类型选择 + 移除，第二行参数占满整行，
+                                            // 这样窗口窄到只剩半屏也不会把参数框挤成一条缝
+                                            delegate: ColumnLayout {
                                                 id: trigRow
                                                 Layout.fillWidth: true
                                                 spacing: 6
@@ -3287,15 +3336,24 @@ PluginPage {
                                                 // 那次延后的版本号变更（onVerChanged）驱动，
                                                 // 保证发生在 delegate 建好之后。
 
-                                                ComboBox {
-                                                    id: trigType
-                                                    Layout.preferredWidth: 170
-                                                    model: page.trigLabels
-                                                    onActivated: {
-                                                        var r = page.cur(); if (!r || !r.triggers) return
-                                                        r.triggers[trigRow.idx] = {"type": page.trigTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
-                                                        trigRow.obj = r.triggers[trigRow.idx]
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 6
+                                                    ComboBox {
+                                                        id: trigType
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredWidth: 170
+                                                        Layout.minimumWidth: 110
+                                                        Layout.maximumWidth: 280
+                                                        model: page.trigLabels
+                                                        onActivated: {
+                                                            var r = page.cur(); if (!r || !r.triggers) return
+                                                            r.triggers[trigRow.idx] = {"type": page.trigTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
+                                                            trigRow.obj = r.triggers[trigRow.idx]
+                                                        }
                                                     }
+                                                    Item { Layout.fillWidth: true }
+                                                    Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeTrigger(trigRow.idx) }
                                                 }
                                                 Loader {
                                                     id: trigFld
@@ -3303,7 +3361,6 @@ PluginPage {
                                                     sourceComponent: page.trigFieldComp(trigRow.obj ? trigRow.obj.type : "")
                                                     onLoaded: trigRow.refreshFields()
                                                 }
-                                                Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeTrigger(trigRow.idx) }
                                             }
                                         }
                                         Button { text: "+ 添加触发器"; onClicked: page.addTrigger() }
@@ -3333,21 +3390,24 @@ PluginPage {
                                         Layout.fillWidth: true
                                         spacing: 8
 
-                                        RowLayout {
+                                        Flow {
                                             Layout.fillWidth: true
                                             spacing: 8
-                                            Text { text: "多个规则集之间" }
+                                            Text {
+                                                text: "多个规则集之间"
+                                                height: 32
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
                                             ComboBox {
                                                 id: rsGroupMode
-                                                Layout.preferredWidth: 130
+                                                width: 130
                                                 model: ["全部满足", "满足其一"]
                                                 onActivated: {
                                                     var r = page.cur()
                                                     if (r) r.rulesetMode = (index === 1 ? "any" : "all")
                                                 }
                                             }
-                                            Item { Layout.fillWidth: true }
-                                            Button { text: "+ 添加规则集"; onClicked: page.addRuleset() }
+                                            Button { text: "+ 添加规则集"; implicitHeight: 30; onClicked: page.addRuleset() }
                                         }
 
                                         Repeater {
@@ -3382,12 +3442,15 @@ PluginPage {
                                                     anchors.fill: parent
                                                     spacing: 6
 
-                                                    RowLayout {
+                                                    // Flow：窗口变窄时开关和按钮自动折到下一行
+                                                    Flow {
                                                         Layout.fillWidth: true
                                                         spacing: 8
                                                         Text {
                                                             typography: Typography.BodyStrong
                                                             text: "规则集 " + (rsRow.idx + 1)
+                                                            height: 32
+                                                            verticalAlignment: Text.AlignVCenter
                                                         }
                                                         Switch {
                                                             id: rsEnabled
@@ -3396,7 +3459,7 @@ PluginPage {
                                                         }
                                                         ComboBox {
                                                             id: rsModeC
-                                                            Layout.preferredWidth: 120
+                                                            width: 120
                                                             model: ["全部满足", "任一满足"]
                                                             onActivated: { var o = rsRow.rsArr(); if (o) o.mode = (index === 1 ? "any" : "all") }
                                                         }
@@ -3405,7 +3468,6 @@ PluginPage {
                                                             text: "取反"
                                                             onToggled: { var o = rsRow.rsArr(); if (o) o.reversed = checked }
                                                         }
-                                                        Item { Layout.fillWidth: true }
                                                         Button {
                                                             text: "移除该规则集"
                                                             implicitHeight: 30
@@ -3416,7 +3478,7 @@ PluginPage {
 
                                                     Repeater {
                                                         model: rsRow.rowCount
-                                                        delegate: RowLayout {
+                                                        delegate: ColumnLayout {
                                                             id: ruleRow
                                                             Layout.fillWidth: true
                                                             spacing: 6
@@ -3442,16 +3504,29 @@ PluginPage {
                                                             }
                                                             // 同样：构造期不动数据，等 ruleVersion 变更。
 
-                                                            ComboBox {
-                                                                id: ruleType
-                                                                Layout.preferredWidth: 170
-                                                                model: page.ruleLabels
-                                                                onActivated: {
-                                                                    var o = rsRow.rsArr(); if (!o) return
-                                                                    if (!o.rules) o.rules = []
-                                                                    o.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
-                                                                    ruleRow.obj = o.rules[ruleRow.idx]
-                                                                    revSw.checked = false
+                                                            RowLayout {
+                                                                Layout.fillWidth: true
+                                                                spacing: 6
+                                                                ComboBox {
+                                                                    id: ruleType
+                                                                    Layout.fillWidth: true
+                                                                    Layout.preferredWidth: 170
+                                                                    Layout.minimumWidth: 110
+                                                                    Layout.maximumWidth: 280
+                                                                    model: page.ruleLabels
+                                                                    onActivated: {
+                                                                        var o = rsRow.rsArr(); if (!o) return
+                                                                        if (!o.rules) o.rules = []
+                                                                        o.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
+                                                                        ruleRow.obj = o.rules[ruleRow.idx]
+                                                                        revSw.checked = false
+                                                                    }
+                                                                }
+                                                                Item { Layout.fillWidth: true }
+                                                                Switch {
+                                                                    id: revSw
+                                                                    text: "取反"
+                                                                    onToggled: if (obj) obj.reversed = checked
                                                                 }
                                                             }
                                                             Loader {
@@ -3459,11 +3534,6 @@ PluginPage {
                                                                 Layout.fillWidth: true
                                                                 sourceComponent: page.ruleFieldComp(ruleRow.obj ? ruleRow.obj.type : "")
                                                                 onLoaded: ruleRow.refreshFields()
-                                                            }
-                                                            Switch {
-                                                                id: revSw
-                                                                text: "取反"
-                                                                onToggled: if (obj) obj.reversed = checked
                                                             }
                                                             Button {
                                                                 text: "移除"
@@ -3504,7 +3574,7 @@ PluginPage {
                                         spacing: 6
                                         Repeater {
                                             model: page.actCount
-                                            delegate: RowLayout {
+                                            delegate: ColumnLayout {
                                                 id: actRow
                                                 Layout.fillWidth: true
                                                 spacing: 6
@@ -3528,15 +3598,26 @@ PluginPage {
                                                 // 那次延后的版本号变更（onVerChanged）驱动，
                                                 // 保证发生在 delegate 建好之后。
 
-                                                ComboBox {
-                                                    id: actType
-                                                    Layout.preferredWidth: 170
-                                                    model: page.actLabels
-                                                    onActivated: {
-                                                        var r = page.cur(); if (!r || !r.actions) return
-                                                        r.actions[actRow.idx] = {"type": page.actTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
-                                                        actRow.obj = r.actions[actRow.idx]
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 6
+                                                    ComboBox {
+                                                        id: actType
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredWidth: 170
+                                                        Layout.minimumWidth: 110
+                                                        Layout.maximumWidth: 280
+                                                        model: page.actLabels
+                                                        onActivated: {
+                                                            var r = page.cur(); if (!r || !r.actions) return
+                                                            r.actions[actRow.idx] = {"type": page.actTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
+                                                            actRow.obj = r.actions[actRow.idx]
+                                                        }
                                                     }
+                                                    Item { Layout.fillWidth: true }
+                                                    Button { text: "↑"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, -1) }
+                                                    Button { text: "↓"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, 1) }
+                                                    Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeAction(actRow.idx) }
                                                 }
                                                 Loader {
                                                     id: actFld
@@ -3544,9 +3625,6 @@ PluginPage {
                                                     sourceComponent: page.actFieldComp(actRow.obj ? actRow.obj.type : "")
                                                     onLoaded: actRow.refreshFields()
                                                 }
-                                                Button { text: "↑"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, -1) }
-                                                Button { text: "↓"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, 1) }
-                                                Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeAction(actRow.idx) }
                                             }
                                         }
                                         Button { text: "+ 添加行动"; onClicked: page.addAction() }
