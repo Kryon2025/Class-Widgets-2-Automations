@@ -997,7 +997,8 @@ PluginPage {
                 if (!/^\d{2}:\d{2}$/.test(hm)) return
                 it.p1 = hm + ":" + ("0" + Math.round(secF.value)).slice(-2)
             }
-            RowLayout {
+            // Flow 而非 RowLayout：窄窗口下自动换行，不会溢出压住「移除」按钮
+            Flow {
                 Layout.fillWidth: true
                 spacing: 8
                 TimePicker {
@@ -1006,17 +1007,20 @@ PluginPage {
                     use24Hour: true
                     onTimeChanged: timeRoot.save()
                 }
-                SpinBox {
-                    id: secF
-                    from: 0
-                    to: 59
-                    editable: true
-                    Layout.preferredWidth: 96
-                    onValueModified: timeRoot.save()
+                RowLayout {
+                    spacing: 4
+                    Text { text: "秒"; opacity: 0.72 }
+                    SpinBox {
+                        id: secF
+                        from: 0
+                        to: 59
+                        editable: true
+                        Layout.preferredWidth: 92
+                        onValueModified: timeRoot.save()
+                    }
                 }
-                Text { text: "星期" }
+                Text { text: "星期"; leftPadding: 4; opacity: 0.72 }
                 WeekdayPicker { id: weekBox }
-                Item { Layout.fillWidth: true }
             }
             Switch {
                 id: skipSw
@@ -1063,7 +1067,7 @@ PluginPage {
                 loading = false
             }
 
-            RowLayout {
+            Flow {
                 Layout.fillWidth: true
                 spacing: 8
                 TimePicker {
@@ -1072,17 +1076,20 @@ PluginPage {
                     use24Hour: true
                     onTimeChanged: alarmRoot.save()
                 }
-                SpinBox {
-                    id: alarmSec
-                    from: 0
-                    to: 59
-                    editable: true
-                    Layout.preferredWidth: 96
-                    onValueModified: alarmRoot.save()
+                RowLayout {
+                    spacing: 4
+                    Text { text: "秒"; opacity: 0.72 }
+                    SpinBox {
+                        id: alarmSec
+                        from: 0
+                        to: 59
+                        editable: true
+                        Layout.preferredWidth: 92
+                        onValueModified: alarmRoot.save()
+                    }
                 }
-                Text { text: "星期" }
+                Text { text: "星期"; leftPadding: 4; opacity: 0.72 }
                 WeekdayPicker { id: alarmWeek }
-                Item { Layout.fillWidth: true }
             }
             RowLayout {
                 Layout.fillWidth: true
