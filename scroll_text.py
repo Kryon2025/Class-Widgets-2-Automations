@@ -28,14 +28,21 @@ from PySide6.QtWidgets import (
 )
 
 # 速度档位（像素/秒）
-SPEEDS = {"slow": 60, "normal": 120, "fast": 220}
+SPEEDS = {"slow": 100, "normal": 220, "fast": 380}
+SPEED_KEYS = ("slow", "normal", "fast")
 SPEED_LABELS = {"slow": "慢", "normal": "正常", "fast": "快"}
 SIZE_PX = {"small": 48, "normal": 72, "large": 120}
+SIZE_KEYS = ("small", "normal", "large")
 SIZE_LABELS = {"small": "小", "normal": "中", "large": "大"}
+
+# 显示模式：全屏铺满 / 屏幕上方一条横幅
+MODES = ("full", "banner")
+MODE_LABELS = {"full": "全屏", "banner": "顶部横幅"}
+BANNER_RATIO = 0.28          # 横幅高度占屏幕高度的比例
 
 LONG_PRESS_MS = 700          # 长按判定阈值（触摸屏长按 = 右键）
 TOUCH_MOVE_TOLERANCE = 60    # 手指移动超过这个像素就当作滑动，不算长按
-DEFAULT_STATIC_SEC = 5       # 静止播放没钱默认停留时长
+DEFAULT_STATIC_SEC = 5       # 静止播放默认停留时长（秒）
 FRAME_MS = 20                # 滚动帧间隔
 
 
@@ -171,9 +178,11 @@ class _BaseOverlay(QWidget):
 class _ScrollWindow(_BaseOverlay):
     """播放窗口：文字超宽则滚动，否则居中停留。"""
 
-    def __init__(self, text: str, duration: int, speed: str, size: str):
+    def __init__(self, text: str, duration: int, speed: str, size: str,
+                 mode: str = "full"):
         super().__init__()
         self._text = text
+        self._mode = mode if mode in MODES else "full"
         self._speed_key = speed if speed in SPEEDS else "normal"
         self._size_key = size if size in SIZE_PX else "normal"
         self._speed = SPEEDS.get(speed, SPEEDS["normal"])
@@ -215,7 +224,12 @@ class _ScrollWindow(_BaseOverlay):
     def showEvent(self, ev):
         geo = _primary_rect()
         if geo is not None:
-            self.setGeometry(geo)
+            if self._mode == "banner":
+                # 屏幕上方一条横幅：宽满屏、高按比例
+                bh = max(140, int(geo.height() * BANNER_RATIO))
+                self.setGeometry(geo.x(), geo.y(), geo.width(), bh)
+            else:
+                self.setGeometry(geo)
         super().showEvent(ev)
         self.raise_()
         w, h = self.width(), self.height()
@@ -226,7 +240,10 @@ class _ScrollWindow(_BaseOverlay):
             self._label.move(max(0, (w - lw) // 2), max(0, (h - lh) // 2))
         else:
             self._label.move(w, max(0, (h - lh) // 2))
-        self._hint.move(w - self._hint.width() - 24, 20)
+        if self._mode == "banner":
+            self._hint.move(w - self._hint.width() - 18, 8)
+        else:
+            self._hint.move(w - self._hint.width() - 24, 20)
         self._timer.start()
 
     # ── 右键菜单 ────────────────────────────────────────
@@ -258,8 +275,9 @@ class _ScrollWindow(_BaseOverlay):
     def _menu_edit(self):
         text, dur = self._text, self._duration
         speed, size = self._speed_key, self._size_key
+        mode = self._mode
         self.close()
-        open_editor(text, dur, speed, size)
+        open_editor(text, dur, speed, size, mode)
 
     # ── 动画 ────────────────────────────────────────────
     def _tick(self):
@@ -288,7 +306,8 @@ class _EditorWindow(_BaseOverlay):
     """手动触发：输入文字后直接播放。输入区放在屏幕上方，避免被屏幕键盘挡住。"""
 
     def __init__(self, text: str = "", duration: int = 0,
-                 speed: str = "normal", size: str = "normal"):
+                 speed: str = "normal", size: str = "normal",
+                 mode: str = "full"):
         # 编辑器里右键留给输入框自己的粘贴菜单，不合成右键
         super().__init__(touch_right_click=False)
         self.setFocusPolicy(Qt.StrongFocus)
@@ -339,19 +358,27 @@ class _EditorWindow(_BaseOverlay):
 
         row.addWidget(lab("速度"))
         self.speed = QComboBox(self)
-        self.speed.addItems([SPEED_LABELS[k] for k in ("slow", "normal", "fast")])
-        self.speed.setCurrentIndex(("slow", "normal", "fast").index(
+        self.speed.addItems([SPEED_LABELS[k] for k in SPEED_KEYS])
+        self.speed.setCurrentIndex(SPEED_KEYS.index(
             speed if speed in SPEEDS else "normal"))
         self.speed.setStyleSheet("QComboBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
         row.addWidget(self.speed)
 
         row.addWidget(lab("字号"))
         self.size = QComboBox(self)
-        self.size.addItems([SIZE_LABELS[k] for k in ("small", "normal", "large")])
-        self.size.setCurrentIndex(("small", "normal", "large").index(
+        self.size.addItems([SIZE_LABELS[k] for k in SIZE_KEYS])
+        self.size.setCurrentIndex(SIZE_KEYS.index(
             size if size in SIZE_PX else "normal"))
         self.size.setStyleSheet("QComboBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
         row.addWidget(self.size)
+
+        row.addWidget(lab("显示"))
+        self.mode = QComboBox(self)
+        self.mode.addItems([MODE_LABELS[k] for k in MODES])
+        self.mode.setCurrentIndex(MODES.index(
+            mode if mode in MODES else "full"))
+        self.mode.setStyleSheet("QComboBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
+        row.addWidget(self.mode)
         row.addStretch(1)
 
         start = QPushButton("开始播放", self)
@@ -385,11 +412,12 @@ class _EditorWindow(_BaseOverlay):
         if not text:
             self.edit.setFocus()
             return
-        speed = ("slow", "normal", "fast")[self.speed.currentIndex()]
-        size = ("small", "normal", "large")[self.size.currentIndex()]
+        speed = SPEED_KEYS[self.speed.currentIndex()]
+        size = SIZE_KEYS[self.size.currentIndex()]
+        mode = MODES[self.mode.currentIndex()]
         dur = int(self.dur.value())
         self.close()
-        show_scroll_text(text, dur, speed, size)
+        show_scroll_text(text, dur, speed, size, mode)
 
 
 def _forget_window(*_a):
@@ -403,8 +431,11 @@ def _forget_editor(*_a):
 
 
 def show_scroll_text(text: str, duration: int = 0, speed: str = "normal",
-                     size: str = "normal") -> None:
-    """在 GUI 线程弹出全屏播放窗口（可从任意线程调用）。"""
+                     size: str = "normal", mode: str = "full") -> None:
+    """弹出播放窗口（可从任意线程调用）。
+
+    mode="full" 全屏铺满；mode="banner" 屏幕上方一条横幅（不挡下面内容）。
+    """
 
     def _run():
         global _window
@@ -412,31 +443,33 @@ def show_scroll_text(text: str, duration: int = 0, speed: str = "normal",
         if not text_:
             logger.warning("[scroll_text] 文字为空，跳过")
             return
-        global _window
+        mode_ = mode if mode in MODES else "full"
         if _alive(_window):
             _window.close()
-        _window = _ScrollWindow(text_, duration, speed, size)
+        _window = _ScrollWindow(text_, duration, speed, size, mode_)
         _window.destroyed.connect(_forget_window)
-        _window.showFullScreen()
+        if mode_ == "banner":
+            _window.show()              # 几何尺寸在 showEvent 里按横幅定
+        else:
+            _window.showFullScreen()
         _window.raise_()
-        logger.info("[scroll_text] 开始播放: {} 字, 时长 {}s, 速度 {}, 字号 {}",
-                    len(text_), duration, speed, size)
+        logger.info("[scroll_text] 开始播放: {} 字, 时长 {}s, 速度 {}, 字号 {}, 模式 {}",
+                    len(text_), duration, speed, size, mode_)
 
     _on_gui(_run)
 
 
 def open_editor(text: str = "", duration: int = 0, speed: str = "normal",
-                size: str = "normal") -> None:
+                size: str = "normal", mode: str = "full") -> None:
     """打开手动输入窗口（设置页按钮用；播放窗口的「编辑文本」也会调它并预填内容）。"""
 
     def _run():
-        global _editor
         global _editor
         if _alive(_editor):
             _editor.raise_()
             _editor.activateWindow()
             return
-        _editor = _EditorWindow(text, duration, speed, size)
+        _editor = _EditorWindow(text, duration, speed, size, mode)
         _editor.destroyed.connect(_forget_editor)
         _editor.showFullScreen()
         _editor.raise_()

@@ -128,6 +128,8 @@ PluginPage {
     property var scrollSpeedLabels: ["慢", "正常", "快"]
     property var scrollSizes: ["small", "normal", "large"]
     property var scrollSizeLabels: ["小", "中", "大"]
+    property var scrollModes: ["full", "banner"]
+    property var scrollModeLabels: ["全屏", "顶部横幅"]
     // 课程展示模式（联动 com.yersmagit.lessonsdisplayer）
     property var lessonModes: ["whiteboard", "blackboard", "exit"]
     property var lessonModeLabels: ["白板模式", "息屏模式", "退出特殊模式"]
@@ -2264,6 +2266,8 @@ PluginPage {
                 speedCombo.currentIndex = Math.max(0, si)
                 var zi = page.scrollSizes.indexOf(item.p4 || "normal")
                 sizeCombo.currentIndex = Math.max(0, zi)
+                var mi = page.scrollModes.indexOf(item.p5 || "full")
+                modeCombo.currentIndex = Math.max(0, mi)
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -2271,7 +2275,7 @@ PluginPage {
                 TextField {
                     id: textF
                     Layout.fillWidth: true
-                    placeholderText: "要全屏显示的文字"
+                    placeholderText: "要显示的文字"
                     onTextEdited: if (it) it.p1 = text
                 }
             }
@@ -2310,15 +2314,25 @@ PluginPage {
                         onActivated: if (it) it.p4 = page.scrollSizes[index]
                     }
                 }
+                RowLayout {
+                    spacing: 4
+                    Text { text: "显示"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    ComboBox {
+                        id: modeCombo
+                        Layout.preferredWidth: 120
+                        model: page.scrollModeLabels
+                        onActivated: if (it) it.p5 = page.scrollModes[index]
+                    }
+                }
             }
             Text {
-                text: "停留 0 秒 = 一直显示到手动退出；文字不超屏时按此停留。"
+                text: "停留 0 秒 = 一直显示到手动退出；文字不超屏时按此停留。顶部横幅只在屏幕上方占一条，不挡下面的内容。"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
             }
             Text {
-                text: "播放时右键单击或长按 0.7 秒退出（触摸屏长按同样有效）。"
+                text: "播放时右键（触屏长按 0.7 秒）弹出菜单：编辑文本 / 退出。"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
@@ -3097,28 +3111,27 @@ PluginPage {
         // 等于「一边被搬进 overlay、一边读 overlay」。实测这就是一点击就崩、
         // 且崩溃偏移每次都相同的现场。改成本页内的普通 Item，彻底不进那套机制。
         id: editorDialog
-        // 宽度跟 parent（横向不会造成循环），高度只跟窗口走。
-        // 之前 height 用了 parent.height，而宿主内容区的高度又由子项撑开，
-        // 于是「面板高度 ↔ 父项高度」互相依赖，滚动位置被反复重算：
-        // 现象就是快速下滑时闪一下又弹回去、最后一张卡永远够不到。
-        // 锚定顶部与左右、高度用显式值：
-        // 高度一旦写 parent.height 就会和「宿主内容区高度由子项撑开」互相依赖，
-        // 触发滚动回弹；而完全不锚定又会让面板回到布局流、被排到卡片列表下面，
-        // 于是盖不住卡片。这里两者兼顾。
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        // 面板高度 = 窗口底边 - 本页顶部在窗口里的位置 - 16。
-        // 不能猜标题栏、也不能用 page.height：宿主的页面容器在内容多时会被撑得比
-        // 窗口还高，按它算面板就会伸出窗口，最后一段内容滚到底也还是在窗口外面。
-        // 这里用 mapToItem(null, …) 拿本页在窗口（场景）里的真实 y，窗口高用
-        // page.Window.height，两者相减才是真正能看见的高度。
-        // 面板挂到窗口根节点上，不参与插件页自己的滚动内容。
-        // 之前挂在页面里：页面本身比窗口高、右侧还会多出一条滚动条，
-        // 面板高度怎么量都会被页面滚动带偏，最后一段内容永远落在窗口外面。
+        // 几何分两步：
+        //   1) 挂到窗口根节点（不参与插件页的滚动内容，页面不会被撑高、不会多出滚动条）；
+        //   2) 但位置和大小取「本页在窗口里的可见区域」，所以不会盖住左侧侧边栏。
+        // 之前直接 anchors.fill 窗口，整块设置界面（含侧边栏）都被盖住了。
         parent: (page.Window && page.Window.contentItem) ? page.Window.contentItem : page
-        // 现在 parent 就是窗口内容区，高度直接取它，不用再估算标题栏/页面偏移。
-        height: Math.max(320, parent.height - 32)
+
+        // 本页左上角在窗口里的位置（场景坐标）→ 可见区域
+        readonly property real areaX: page.mapToItem(null, 0, 0).x
+        readonly property real areaY: Math.max(0, page.mapToItem(null, 0, 0).y)
+        readonly property real areaW: page.width
+        readonly property real areaH: {
+            var winH = parent ? parent.height : page.height
+            var h = winH - areaY
+            if (!(h > 200)) h = Math.max(320, page.height)
+            return h
+        }
+
+        x: areaX
+        width: areaW
+        y: areaY
+        height: Math.max(320, areaH - 16)   // 面板内再减 32（y=16 + 底部 16），底边不出窗口
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。

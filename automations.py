@@ -1652,9 +1652,10 @@ class RuleEngine(QObject):
             dur = 0
         speed = str(a.get("p3") or "normal").strip().lower() or "normal"
         size = str(a.get("p4") or "normal").strip().lower() or "normal"
+        mode = str(a.get("p5") or "full").strip().lower() or "full"
         try:
             import scroll_text
-            scroll_text.show_scroll_text(text, dur, speed, size)
+            scroll_text.show_scroll_text(text, dur, speed, size, mode)
         except Exception as e:                        # noqa: BLE001
             logger.warning("[automations] 全屏文字播放失败: {}", e)
 
