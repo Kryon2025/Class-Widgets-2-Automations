@@ -336,6 +336,14 @@ PluginPage {
     Component.onCompleted: firstLoad.start()
     // backend 一到也不马上取数：同样推到页面完全建好之后（与 firstLoad 合并成一次）。
     onBackendChanged: { if (backend) firstLoad.restart() }
+    // 编辑面板被挂到窗口根节点（见 editorDialog 的 parent），不会随本页一起销毁；
+    // 离开本页时把它收掉，避免残留一层全屏遮罩。
+    Component.onDestruction: {
+        if (editorDialog) {
+            editorDialog.visible = false
+            editorDialog.parent = page
+        }
+    }
 
     function cur() {
         // 编辑页打开时，所有字段写进草稿；点「保存」才写回配置，取消即丢弃。
@@ -3105,14 +3113,12 @@ PluginPage {
         // 窗口还高，按它算面板就会伸出窗口，最后一段内容滚到底也还是在窗口外面。
         // 这里用 mapToItem(null, …) 拿本页在窗口（场景）里的真实 y，窗口高用
         // page.Window.height，两者相减才是真正能看见的高度。
-        readonly property real visibleHeight: {
-            var winH = (page.Window && page.Window.height) ? page.Window.height : page.height
-            var topY = page.mapToItem(null, 0, 0).y
-            var h = winH - topY - 16
-            if (!(h > 200)) h = winH - 32          // 量不到就退回窗口高，别把面板压没
-            return h
-        }
-        height: visibleHeight
+        // 面板挂到窗口根节点上，不参与插件页自己的滚动内容。
+        // 之前挂在页面里：页面本身比窗口高、右侧还会多出一条滚动条，
+        // 面板高度怎么量都会被页面滚动带偏，最后一段内容永远落在窗口外面。
+        parent: (page.Window && page.Window.contentItem) ? page.Window.contentItem : page
+        // 现在 parent 就是窗口内容区，高度直接取它，不用再估算标题栏/页面偏移。
+        height: Math.max(320, parent.height - 32)
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
