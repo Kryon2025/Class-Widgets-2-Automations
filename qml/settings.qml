@@ -3100,10 +3100,19 @@ PluginPage {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        // 高度 = 窗口高 − 64：留出标题栏和底部边距，面板底边完整落在窗口里。
-        // （之前用「窗口高 × 1.06」把底边推出屏幕，结果最下面一段内容被窗口边缘切断；
-        //   仍然用显式值而不是 parent.height，避免和「宿主内容区高度由子项撑开」互相依赖。）
-        height: Math.max(320, (page.Window && page.Window.height ? page.Window.height : 640) - 64)
+        // 面板高度 = 窗口底边 - 本页顶部在窗口里的位置 - 16。
+        // 不能猜标题栏、也不能用 page.height：宿主的页面容器在内容多时会被撑得比
+        // 窗口还高，按它算面板就会伸出窗口，最后一段内容滚到底也还是在窗口外面。
+        // 这里用 mapToItem(null, …) 拿本页在窗口（场景）里的真实 y，窗口高用
+        // page.Window.height，两者相减才是真正能看见的高度。
+        readonly property real visibleHeight: {
+            var winH = (page.Window && page.Window.height) ? page.Window.height : page.height
+            var topY = page.mapToItem(null, 0, 0).y
+            var h = winH - topY - 16
+            if (!(h > 200)) h = winH - 32          // 量不到就退回窗口高，别把面板压没
+            return h
+        }
+        height: visibleHeight
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
