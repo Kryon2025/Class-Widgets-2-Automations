@@ -16,7 +16,7 @@ import ClassWidgets.Plugins
 PluginPage {
     id: page
     pluginId: "org.cslblog.betterautomations"
-    title: "自动化"
+    title: "更好的自动化"
 
     // 页头只留工具按钮：「随机点名联动 / 系统通知」两个开关已收进
     // 主界面的「扩展功能」折叠列表（见下方 SettingsLayout）。

@@ -121,7 +121,7 @@ class Plugin(CW2Plugin):
         try:
             self.api.ui.register_settings_page(
                 qml_path=str(Path(__file__).parent / "qml" / "settings.qml"),
-                title="自动化",
+                title="更好的自动化",
                 icon="ic_fluent_arrow_autofit_height_20_regular",
             )
             logger.info("[automations] 设置页注册成功")
