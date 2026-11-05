@@ -325,18 +325,42 @@ class Plugin(CW2Plugin):
         except Exception as e:                        # noqa: BLE001
             logger.warning("[automations] 全屏文字播放失败: {}", e)
 
+    # 上课 / 活动期间一律不准推送（远程横幅也不许弹）
+    BLOCKING_STATUS = ("class", "activity")
+
+    def _blocking_status(self) -> str:
+        """当前是否落在「不准推送」的状态里；是则返回状态名，否则返回空串。"""
+        try:
+            status = str(self._engine._safe_status() or "") if self._engine else ""
+        except Exception:                             # noqa: BLE001
+            status = ""
+        return status if status in self.BLOCKING_STATUS else ""
+
+    @Slot(result=str)
+    def bannerBlockReason(self) -> str:
+        """给别的插件问「现在能不能推横幅」：能推返回空串，不能推返回原因。"""
+        status = self._blocking_status()
+        if not status:
+            return ""
+        return "正在上课，禁止推送横幅" if status == "class" else "正在活动，禁止推送横幅"
+
     @Slot(str, int, result=bool)
     def playBanner(self, text: str, duration: int) -> bool:
-        """供其它插件（如「集控」远程推送）调用：只以顶部横幅模式显示一段文字。
+        """供其它插件（如「课表同步」远程推送）调用：只以顶部横幅模式显示一段文字。
 
         duration 为秒，0 = 一直显示到手动退出。返回是否成功弹出。
+        上课 / 活动中直接拒绝，不弹也不排队。
         """
         try:
             body = str(text or "").strip()
             if not body:
                 return False
+            status = self._blocking_status()
+            if status:
+                logger.warning("[automations] 当前状态 {}，拒绝远程横幅", status)
+                return False
             scroll_text.show_scroll_text(body, max(0, int(duration or 0)),
-                                         "normal", "normal", "banner")
+                                         "normal", "normal", "banner", external=True)
             logger.info("[automations] 外部调用播放横幅: {} 字, {}s", len(body), duration)
             return True
         except Exception as e:                        # noqa: BLE001

@@ -224,10 +224,12 @@ class _ScrollWindow(_BaseOverlay):
     """播放窗口：文字超宽则滚动，否则居中停留。"""
 
     def __init__(self, text: str, duration: int, speed: str, size: str,
-                 mode: str = "full"):
+                 mode: str = "full", external: bool = False):
         super().__init__()
         self._text = text
         self._mode = mode if mode in MODES else "full"
+        # external=True 表示由别的插件远程推送来的（上课时要能被强制关掉）
+        self._external = bool(external)
         self._speed_key = speed if speed in SPEEDS else "normal"
         self._size_key = size if size in SIZE_PX else "normal"
         self._speed = SPEEDS.get(speed, SPEEDS["normal"])
@@ -480,16 +482,37 @@ def _forget_window(*_a):
     _window = None
 
 
+def close_external_banner() -> bool:
+    """关掉「外部插件推来的」播放窗口，返回是否真的关了一个。
+
+    用于上课开始：远程横幅一律不准留在屏幕上。插件自己自动化触发的播放
+    （external=False）不受影响，避免把「上课开始 → 播放文字」这类规则一起干掉。
+    """
+    closed = {"ok": False}
+
+    def _run() -> None:
+        global _window
+        if _alive(_window) and getattr(_window, "_external", False):
+            _window.close()
+            closed["ok"] = True
+            logger.info("[scroll_text] 上课开始，已关掉远程推送的横幅")
+
+    _on_gui(_run)
+    return closed["ok"]
+
+
 def _forget_editor(*_a):
     global _editor
     _editor = None
 
 
 def show_scroll_text(text: str, duration: int = 0, speed: str = "normal",
-                     size: str = "normal", mode: str = "full") -> None:
+                     size: str = "normal", mode: str = "full",
+                     external: bool = False) -> None:
     """弹出播放窗口（可从任意线程调用）。
 
     mode="full" 全屏铺满；mode="banner" 屏幕上方一条横幅（不挡下面内容）。
+    external=True 标记为「外部插件推来的」，上课开始时会被 close_external_banner() 关掉。
     """
 
     def _run():
@@ -501,7 +524,7 @@ def show_scroll_text(text: str, duration: int = 0, speed: str = "normal",
         mode_ = mode if mode in MODES else "full"
         if _alive(_window):
             _window.close()
-        _window = _ScrollWindow(text_, duration, speed, size, mode_)
+        _window = _ScrollWindow(text_, duration, speed, size, mode_, external)
         _window.destroyed.connect(_forget_window)
         if mode_ == "banner":
             _window.show()              # 几何尺寸在 showEvent 里按横幅定

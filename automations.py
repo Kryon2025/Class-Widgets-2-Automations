@@ -987,6 +987,14 @@ class RuleEngine(QObject):
         was_class = prev in ("class", "activity")
         is_class = host in ("class", "activity")
 
+        # 上课铃一响：远程推来的横幅一律撤掉（插件自己规则触发的播放不动）
+        if not was_class and is_class:
+            try:
+                import scroll_text
+                scroll_text.close_external_banner()
+            except Exception as e:                   # noqa: BLE001
+                logger.debug("[automations] 关闭远程横幅失败: {}", e)
+
         if T_STATUS_CHANGE in (t.get("type") for r in self._rules for t in r.get("triggers") or []):
             fire(T_STATUS_CHANGE)
         if not was_class and is_class:
