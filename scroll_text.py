@@ -16,6 +16,9 @@
 """
 from __future__ import annotations
 
+import ctypes
+import sys
+
 from loguru import logger
 
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
@@ -43,9 +46,45 @@ BANNER_TOP_MIN = 24          # 留空最小值（像素）
 BANNER_TOP_MAX = 90          # 留空最大值（像素）
 BANNER_PAD_Y = 22            # 横幅内文字上下的内边距
 
+# 输入控件样式：一律用实色（半透明背景 + 不透明窗口会在 hover 重绘时白闪）
+FIELD_STYLE = (
+    "QSpinBox, QComboBox{"
+    " background:#262626; color:#ffffff; border:1px solid #4a4a4a;"
+    " border-radius:6px; padding:4px 6px;}"
+    "QSpinBox:hover, QComboBox:hover{border-color:#6f6f6f; background:#2e2e2e;}"
+    "QSpinBox:focus, QComboBox:focus{border-color:#2f7cf6; background:#2e2e2e;}"
+    "QSpinBox{min-width:96px;}"
+    "QSpinBox::up-button, QSpinBox::down-button{"
+    " width:18px; background:#333333; border:none;}"
+    "QSpinBox::up-button{border-top-right-radius:5px;}"
+    "QSpinBox::down-button{border-bottom-right-radius:5px;}"
+    "QSpinBox::up-button:hover, QSpinBox::down-button:hover{background:#454545;}"
+    "QSpinBox::up-button:pressed, QSpinBox::down-button:pressed{background:#2f7cf6;}"
+    "QSpinBox::up-arrow, QSpinBox::down-arrow{width:7px; height:7px;}"
+    "QComboBox::drop-down{width:22px; border:none; background:transparent;}"
+    "QComboBox::down-arrow{width:8px; height:8px;}"
+    "QComboBox QAbstractItemView{background:#262626; color:#ffffff;"
+    " selection-background-color:#2f7cf6; border:1px solid #4a4a4a;}"
+)
+
 LONG_PRESS_MS = 700          # 长按判定阈值（触摸屏长按 = 右键）
 TOUCH_MOVE_TOLERANCE = 60    # 手指移动超过这个像素就当作滑动，不算长按
-DEFAULT_STATIC_SEC = 5       # 静止播放默认停留时长（秒）
+GWL_EXSTYLE = -20
+WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_NOACTIVATE = 0x08000000
+
+
+def _hide_from_taskbar(w) -> None:
+    """让窗口不出现在任务栏 / Alt+Tab（Windows 扩展样式 WS_EX_TOOLWINDOW）。"""
+    if sys.platform != "win32":
+        return
+    try:
+        hwnd = int(w.winId())
+        user32 = ctypes.windll.user32
+        style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_TOOLWINDOW)
+    except Exception as e:                       # noqa: BLE001
+        logger.debug("[scroll_text] 设置任务栏隐藏失败: {}", e)
 FRAME_MS = 20                # 滚动帧间隔
 
 
@@ -128,6 +167,9 @@ class _BaseOverlay(QWidget):
         # 不透明背景：由子类 paintEvent 涂满，避免先刷一层白底再涂黑
         self.setAttribute(Qt.WA_OpaquePaintEvent, True)
         self.setAutoFillBackground(False)
+
+        # 建出原生窗口后立即打上 TOOLWINDOW 样式：全屏/横幅都不占任务栏
+        _hide_from_taskbar(self)
 
         self._touch_pt = None
         self._touch_timer = QTimer(self)
@@ -294,9 +336,8 @@ class _ScrollWindow(_BaseOverlay):
             self._hint.hide()
 
         if self._static:
-            # 静止：停留指定时长（没填就 5 秒）
-            limit = self._duration or DEFAULT_STATIC_SEC
-            if self._elapsed >= limit:
+            # 静止：填 0 = 一直显示，直到右键菜单 / Esc 手动关掉
+            if self._duration and self._elapsed >= self._duration:
                 self.close()
             return
 
@@ -344,8 +385,9 @@ class _EditorWindow(_BaseOverlay):
         f.setPixelSize(24)
         self.edit.setFont(f)
         self.edit.setStyleSheet(
-            "QPlainTextEdit{background: rgba(255,255,255,24); color:#fff;"
-            " border:1px solid rgba(255,255,255,60); border-radius:8px; padding:10px;}")
+            "QPlainTextEdit{background:#1c1c1c; color:#ffffff;"
+            " border:1px solid #4a4a4a; border-radius:8px; padding:10px;}"
+            "QPlainTextEdit:focus{border-color:#2f7cf6;}")
         root.addWidget(self.edit)
 
         row = QHBoxLayout()
@@ -360,7 +402,7 @@ class _EditorWindow(_BaseOverlay):
         self.dur = QSpinBox(self)
         self.dur.setRange(0, 3600)
         self.dur.setValue(max(0, int(duration or 0)))
-        self.dur.setStyleSheet("QSpinBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
+        self.dur.setStyleSheet(FIELD_STYLE)
         row.addWidget(self.dur)
 
         row.addWidget(lab("速度"))
@@ -368,7 +410,7 @@ class _EditorWindow(_BaseOverlay):
         self.speed.addItems([SPEED_LABELS[k] for k in SPEED_KEYS])
         self.speed.setCurrentIndex(SPEED_KEYS.index(
             speed if speed in SPEEDS else "normal"))
-        self.speed.setStyleSheet("QComboBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
+        self.speed.setStyleSheet(FIELD_STYLE)
         row.addWidget(self.speed)
 
         row.addWidget(lab("字号"))
@@ -376,7 +418,7 @@ class _EditorWindow(_BaseOverlay):
         self.size.addItems([SIZE_LABELS[k] for k in SIZE_KEYS])
         self.size.setCurrentIndex(SIZE_KEYS.index(
             size if size in SIZE_PX else "normal"))
-        self.size.setStyleSheet("QComboBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
+        self.size.setStyleSheet(FIELD_STYLE)
         row.addWidget(self.size)
 
         row.addWidget(lab("显示"))
@@ -384,7 +426,7 @@ class _EditorWindow(_BaseOverlay):
         self.mode.addItems([MODE_LABELS[k] for k in MODES])
         self.mode.setCurrentIndex(MODES.index(
             mode if mode in MODES else "full"))
-        self.mode.setStyleSheet("QComboBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
+        self.mode.setStyleSheet(FIELD_STYLE)
         row.addWidget(self.mode)
         row.addStretch(1)
 
@@ -396,7 +438,10 @@ class _EditorWindow(_BaseOverlay):
 
         close = QPushButton("取消", self)
         close.setStyleSheet(
-            "QPushButton{background:rgba(255,255,255,30); color:#fff; padding:8px 18px; border-radius:6px;}")
+            "QPushButton{background:#333333; color:#ffffff; padding:8px 18px;"
+            " border-radius:6px;}"
+            "QPushButton:hover{background:#3f3f3f;}"
+            "QPushButton:pressed{background:#2a2a2a;}")
         close.clicked.connect(self.close)
         row.addWidget(close)
         root.addLayout(row)
