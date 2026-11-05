@@ -62,6 +62,7 @@ class Plugin(CW2Plugin):
         self._task: RuleEngineTask | None = None
         self._debugger = None
         self._widget_backend: AutomationsWidgetBackend | None = None
+        self._old_plugin_on = False      # 旧的「Kryon的自动化」是否仍在启用
 
     def on_load(self):
         super().on_load()
@@ -110,6 +111,12 @@ class Plugin(CW2Plugin):
         except Exception as e:
             logger.warning("[automations] 引擎启动失败: {}", e)
             self._engine = None
+
+        # 检测旧插件是否还在启用：两套引擎并存会让同一条规则触发两次
+        try:
+            self._old_plugin_on = self._detect_old_plugin()
+        except Exception as e:
+            logger.warning("[automations] 旧插件检测失败: {}", e)
 
         try:
             self.api.ui.register_settings_page(
@@ -254,6 +261,50 @@ class Plugin(CW2Plugin):
         except Exception as e:
             logger.warning("[automations] 记录提示状态失败: {}", e)
             return False
+
+
+    # ── 旧插件并存检测 ──────────────────────────────────────
+    def _detect_old_plugin(self) -> bool:
+        """旧的 com.kryon.automations 若仍在本机且处于启用状态，返回 True。
+
+        规则已自动迁移过来，两套引擎同时跑会让同一条规则触发两次，
+        所以检测到就弹一次系统通知，并在设置页顶部常驻一条提示。
+        """
+        root = _app_root()
+        old_id = "com.kryon.automations"
+        if not (root / "plugins" / old_id).exists():
+            return False
+        enabled = []
+        try:
+            cfg = json.loads((root / "configs" / "configs.json").read_text(encoding="utf-8"))
+            enabled = ((cfg.get("plugins") or {}).get("enabled") or [])
+        except Exception as e:                            # noqa: BLE001
+            logger.debug("[automations] 读 configs.json 失败，按已启用处理: {}", e)
+            enabled = [old_id]
+        if old_id not in enabled:
+            return False
+        # 只弹一次系统通知，避免每次开机都打扰
+        flag = root / "configs" / "plugins" / f"{getattr(self, 'pid', '') or CFG_NAME[:-5]}.old_plugin_notified"
+        if not flag.exists():
+            try:
+                import notify
+                notify.send(
+                    "更好的自动化",
+                    "检测到旧插件「Kryon的自动化」仍在启用。请停用或卸载它，否则同一条规则会触发两次；规则已自动迁移，无需重新配置。",
+                )
+            except Exception as e:                        # noqa: BLE001
+                logger.warning("[automations] 旧插件提示通知发送失败: {}", e)
+            try:
+                flag.parent.mkdir(parents=True, exist_ok=True)
+                flag.write_text("1", encoding="utf-8")
+            except Exception:                             # noqa: BLE001
+                pass
+        logger.warning("[automations] 旧插件 com.kryon.automations 仍在启用，已提示用户停用")
+        return True
+
+    @Slot(result=bool)
+    def oldPluginConflict(self) -> bool:
+        return bool(self._old_plugin_on)
 
     @Slot(result=str)
     def getRulesJson(self) -> str:

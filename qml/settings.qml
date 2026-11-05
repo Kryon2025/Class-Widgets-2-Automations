@@ -2733,6 +2733,22 @@ PluginPage {
                                   page.dismissHint("revert")
         }
 
+        // 旧插件并存提示：检测到 com.kryon.automations 仍启用时显示
+        InfoBar {
+            id: oldPluginHint
+            Layout.fillWidth: true
+            severity: Severity.Warning
+            title: "检测到旧插件「Kryon的自动化」仍在启用"
+            text: "两套自动化引擎同时运行，同一条规则会触发两次。请到插件广场停用或卸载「Kryon的自动化」——本插件的规则已自动迁移，无需重新配置。"
+            closable: true
+            visible: backend && backend.oldPluginConflict && backend.oldPluginConflict()
+                     && !(page.hintDismissed || {}).oldplugin
+            onVisibleChanged: if (!visible && backend && backend.oldPluginConflict
+                                  && backend.oldPluginConflict()
+                                  && !(page.hintDismissed || {}).oldplugin)
+                                  page.dismissHint("oldplugin")
+        }
+
         // 扩展功能：两个开关收进折叠列表，默认收起
         SettingExpander {
             id: extExpander
