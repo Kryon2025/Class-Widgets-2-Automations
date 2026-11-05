@@ -325,6 +325,24 @@ class Plugin(CW2Plugin):
         except Exception as e:                        # noqa: BLE001
             logger.warning("[automations] 全屏文字播放失败: {}", e)
 
+    @Slot(str, int, result=bool)
+    def playBanner(self, text: str, duration: int) -> bool:
+        """供其它插件（如「集控」远程推送）调用：只以顶部横幅模式显示一段文字。
+
+        duration 为秒，0 = 一直显示到手动退出。返回是否成功弹出。
+        """
+        try:
+            body = str(text or "").strip()
+            if not body:
+                return False
+            scroll_text.show_scroll_text(body, max(0, int(duration or 0)),
+                                         "normal", "normal", "banner")
+            logger.info("[automations] 外部调用播放横幅: {} 字, {}s", len(body), duration)
+            return True
+        except Exception as e:                        # noqa: BLE001
+            logger.warning("[automations] 播放横幅失败: {}", e)
+            return False
+
     @Slot(result=bool)
     def oldPluginConflict(self) -> bool:
         return bool(self._old_plugin_on)

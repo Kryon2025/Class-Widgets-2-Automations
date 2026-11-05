@@ -342,17 +342,14 @@ class _ScrollWindow(_BaseOverlay):
             return
 
         self._label.move(self._label.x() - int(self._speed * FRAME_MS / 1000.0), self._label.y())
-        # 限定了时长且到点 → 提前结束
-        if self._duration and self._elapsed >= self._duration:
-            logger.info("[scroll_text] 到时关闭（{} 秒）", self._duration)
-            self.close()
-            return
+        # 滚到最后一个字完全离开屏幕：到时就关，没到时或时长 0 就从右边重新进来。
+        # 注意：时长到了也不能把正在滚的半截字切掉，必须等这一段滚完，
+        # 否则会出现「话没看完横幅就没了」。
         if self._label.x() + self._label.width() < 0:
-            if self._duration:
-                logger.info("[scroll_text] 滚动播完关闭")
+            if self._duration and self._elapsed >= self._duration:
+                logger.info("[scroll_text] 滚动播完且到时，关闭（{} 秒）", self._duration)
                 self.close()
             else:
-                # 时长 0 = 一直显示：整段滚完后从右边重新进来
                 self._label.move(self.width() + 40, self._label.y())
 
 
