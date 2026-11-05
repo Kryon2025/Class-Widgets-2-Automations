@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""全屏文字播放：滚动 / 静止停留，右键或长按退出。
+"""全屏文字播放：滚动 / 静止停留，右键（触屏长按）退出。
 
 给自动化提供两个入口：
     1. 行动「全屏滚动文字」→ show_scroll_text()
@@ -7,8 +7,8 @@
 
 设计要点：
     - 纯 QWidget 实现，不依赖宿主 QML 结构，避免跟着主程序改版失效；
-    - 全屏、无边框、置顶，播放期间不抢键盘焦点以外的输入；
-    - 退出方式：右键单击、长按（约 0.7 秒，触摸屏等同于右键）、Esc；
+    - 真·全屏、无边框、置顶，纯黑不透明背景（盖住任务栏）；
+    - 退出方式：鼠标右键、触摸屏长按 0.7 秒（等价于右键）、Esc；
     - 文字宽度不超过屏幕 → 静止居中停留 p2 秒；超过 → 从右往左滚动。
 
 线程：窗口必须在 GUI 线程创建。init() 在插件 on_load（GUI 线程）调用，
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
@@ -31,7 +31,8 @@ SPEED_LABELS = {"slow": "慢", "normal": "正常", "fast": "快"}
 SIZE_PX = {"small": 48, "normal": 72, "large": 120}
 SIZE_LABELS = {"small": "小", "normal": "中", "large": "大"}
 
-LONG_PRESS_MS = 700          # 长按判定阈值
+LONG_PRESS_MS = 700          # 长按判定阈值（触摸屏长按 = 右键）
+TOUCH_MOVE_TOLERANCE = 60    # 手指移动超过这个像素就当作滑动，不算长按
 DEFAULT_STATIC_SEC = 5       # 静止播放没钱默认停留时长
 FRAME_MS = 20                # 滚动帧间隔
 
@@ -91,33 +92,75 @@ def _primary_rect():
 
 
 class _BaseOverlay(QWidget):
-    """全屏置顶遮罩窗口基类。"""
+    """全屏置顶遮罩窗口基类。
 
-    def __init__(self):
+    退出：鼠标右键 → 立即关闭；触摸屏长按 0.7 秒 → 关闭（等同于右键）。
+    用 Qt.Window 而不是 Qt.Tool：Tool 窗口在 Windows 上全屏时盖不住任务栏，
+    表现就是「看着不全屏」。
+    """
+
+    def __init__(self, exit_on_right: bool = True):
         super().__init__()
+        self.exit_on_right = exit_on_right
         self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-            | Qt.WindowDoesNotAcceptFocus
+            Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WA_DeleteOnClose, True)
-        self._press_timer = QTimer(self)
-        self._press_timer.setSingleShot(True)
-        self._press_timer.timeout.connect(self._on_long_press)
+        # 自己收触摸事件，才能判定「长按」；否则系统可能把长按直接吞掉
+        self.setAttribute(Qt.WA_AcceptTouchEvents, True)
+        # 不透明背景：由子类 paintEvent 自己涂满，避免先刷一层白底再涂黑
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        self.setAutoFillBackground(False)
 
-    def _on_long_press(self):
-        self.close()
+        self._touch_pt = None
+        self._touch_timer = QTimer(self)
+        self._touch_timer.setSingleShot(True)
+        self._touch_timer.timeout.connect(self._on_touch_long_press)
+
+    # ── 退出判定 ────────────────────────────────────────
+    def _on_touch_long_press(self):
+        self._touch_pt = None
+        if self.exit_on_right:
+            self.close()
 
     def mousePressEvent(self, ev):
-        if ev.button() == Qt.RightButton:
+        # Windows 对触摸长按有时也会合成一次右键，一并接住
+        if self.exit_on_right and ev.button() == Qt.RightButton:
+            ev.accept()
             self.close()
             return
-        # 左键 / 触摸按压：启动长按计时，松开前到点就退出
-        self._press_timer.start(LONG_PRESS_MS)
         super().mousePressEvent(ev)
 
-    def mouseReleaseEvent(self, ev):
-        self._press_timer.stop()
-        super().mouseReleaseEvent(ev)
+    def contextMenuEvent(self, ev):
+        if self.exit_on_right:
+            ev.accept()
+            self.close()
+            return
+        super().contextMenuEvent(ev)
+
+    def touchEvent(self, ev):
+        et = ev.type()
+        pts = ev.points()
+        if et == QEvent.TouchBegin:
+            if self.exit_on_right and pts:
+                self._touch_pt = pts[0].position()
+                self._touch_timer.start(LONG_PRESS_MS)
+            ev.accept()
+            return True
+        if et == QEvent.TouchUpdate:
+            if self._touch_pt is not None and pts:
+                d = pts[0].position() - self._touch_pt
+                if abs(d.x()) + abs(d.y()) > TOUCH_MOVE_TOLERANCE:
+                    self._touch_timer.stop()
+                    self._touch_pt = None
+            ev.accept()
+            return True
+        if et in (QEvent.TouchEnd, QEvent.TouchCancel):
+            self._touch_timer.stop()
+            self._touch_pt = None
+            ev.accept()
+            return True
+        return super().touchEvent(ev)
 
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Escape:
@@ -136,7 +179,6 @@ class _ScrollWindow(_BaseOverlay):
         self._duration = max(0, int(duration or 0))
         self._elapsed = 0.0
         self._hint_ms = 0
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
 
         px = SIZE_PX.get(size, SIZE_PX["normal"])
         self._label = QLabel(text, self)
@@ -145,13 +187,16 @@ class _ScrollWindow(_BaseOverlay):
         f.setBold(True)
         self._label.setFont(f)
         self._label.setStyleSheet("color: #ffffff;")
+        # 文字层不接收鼠标/触摸，右键与长按照样落到窗口本身
+        self._label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self._label.adjustSize()
 
-        self._hint = QLabel("右键 / 长按任意位置退出", self)
+        self._hint = QLabel("右键退出（触摸屏长按 0.7 秒）", self)
         hf = QFont()
         hf.setPixelSize(20)
         self._hint.setFont(hf)
         self._hint.setStyleSheet("color: rgba(255,255,255,150);")
+        self._hint.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self._hint.adjustSize()
 
         self._timer = QTimer(self)
@@ -161,14 +206,16 @@ class _ScrollWindow(_BaseOverlay):
 
     # ── 绘制 ────────────────────────────────────────────
     def paintEvent(self, ev):
+        # 纯黑、不透明：不留一丝桌面透光
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor(0, 0, 0, 235))
+        p.fillRect(self.rect(), QColor(0, 0, 0, 255))
 
     def showEvent(self, ev):
         geo = _primary_rect()
         if geo is not None:
             self.setGeometry(geo)
         super().showEvent(ev)
+        self.raise_()
         w, h = self.width(), self.height()
         self._label.adjustSize()
         lw, lh = self._label.width(), self._label.height()
@@ -207,10 +254,8 @@ class _EditorWindow(_BaseOverlay):
     """手动触发：输入文字后直接播放。输入区放在屏幕上方，避免被屏幕键盘挡住。"""
 
     def __init__(self):
-        super().__init__()
-        # 编辑器必须能接收键盘/触摸输入：去掉基类的 WindowDoesNotAcceptFocus
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        # 编辑器里右键常用来粘贴，不拿它当退出键；退出用「取消」或 Esc
+        super().__init__(exit_on_right=False)
         self.setFocusPolicy(Qt.StrongFocus)
 
         root = QVBoxLayout(self)
@@ -225,7 +270,7 @@ class _EditorWindow(_BaseOverlay):
         title.setStyleSheet("color: #ffffff;")
         root.addWidget(title)
 
-        tip = QLabel("输入要显示的文字，点「开始播放」。播放时右键或长按退出。", self)
+        tip = QLabel("输入要显示的文字，点「开始播放」。播放时右键（触屏长按）退出。", self)
         tip.setStyleSheet("color: rgba(255,255,255,170);")
         tip.setWordWrap(True)
         root.addWidget(tip)
@@ -287,7 +332,7 @@ class _EditorWindow(_BaseOverlay):
 
     def paintEvent(self, ev):
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor(0, 0, 0, 225))
+        p.fillRect(self.rect(), QColor(0, 0, 0, 255))
 
     def showEvent(self, ev):
         geo = _primary_rect()
