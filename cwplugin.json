@@ -1,7 +1,7 @@
 {
   "id": "org.cslblog.betterautomations",
   "name": "更好的自动化",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "api_version": "~=0.7.0",
   "entry": "main.py",
   "author": "Kryon（由 orange838 修改增强）",

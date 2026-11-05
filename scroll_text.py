@@ -344,10 +344,16 @@ class _ScrollWindow(_BaseOverlay):
         self._label.move(self._label.x() - int(self._speed * FRAME_MS / 1000.0), self._label.y())
         # 限定了时长且到点 → 提前结束
         if self._duration and self._elapsed >= self._duration:
+            logger.info("[scroll_text] 到时关闭（{} 秒）", self._duration)
             self.close()
             return
         if self._label.x() + self._label.width() < 0:
-            self.close()
+            if self._duration:
+                logger.info("[scroll_text] 滚动播完关闭")
+                self.close()
+            else:
+                # 时长 0 = 一直显示：整段滚完后从右边重新进来
+                self._label.move(self.width() + 40, self._label.y())
 
 
 class _EditorWindow(_BaseOverlay):
