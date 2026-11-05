@@ -38,7 +38,10 @@ SIZE_LABELS = {"small": "小", "normal": "中", "large": "大"}
 # 显示模式：全屏铺满 / 屏幕上方一条横幅
 MODES = ("full", "banner")
 MODE_LABELS = {"full": "全屏", "banner": "顶部横幅"}
-BANNER_RATIO = 0.28          # 横幅高度占屏幕高度的比例
+BANNER_TOP_RATIO = 0.045     # 横幅离屏幕顶端的留空（占屏幕高度的比例）
+BANNER_TOP_MIN = 24          # 留空最小值（像素）
+BANNER_TOP_MAX = 90          # 留空最大值（像素）
+BANNER_PAD_Y = 22            # 横幅内文字上下的内边距
 
 LONG_PRESS_MS = 700          # 长按判定阈值（触摸屏长按 = 右键）
 TOUCH_MOVE_TOLERANCE = 60    # 手指移动超过这个像素就当作滑动，不算长按
@@ -191,6 +194,7 @@ class _ScrollWindow(_BaseOverlay):
         self._hint_ms = 0
 
         px = SIZE_PX.get(size, SIZE_PX["normal"])
+        self._font_px = px
         self._label = QLabel(text, self)
         f = QFont()
         f.setPixelSize(px)
@@ -225,9 +229,12 @@ class _ScrollWindow(_BaseOverlay):
         geo = _primary_rect()
         if geo is not None:
             if self._mode == "banner":
-                # 屏幕上方一条横幅：宽满屏、高按比例
-                bh = max(140, int(geo.height() * BANNER_RATIO))
-                self.setGeometry(geo.x(), geo.y(), geo.width(), bh)
+                # 屏幕上方一条横幅：宽满屏，高度随字号自适应，顶端留一点空
+                margin = int(min(BANNER_TOP_MAX,
+                                 max(BANNER_TOP_MIN, geo.height() * BANNER_TOP_RATIO)))
+                bh = int(self._font_px * 1.45) + BANNER_PAD_Y * 2
+                bh = max(80, min(bh, int(geo.height() * 0.4)))
+                self.setGeometry(geo.x(), geo.y() + margin, geo.width(), bh)
             else:
                 self.setGeometry(geo)
         super().showEvent(ev)
