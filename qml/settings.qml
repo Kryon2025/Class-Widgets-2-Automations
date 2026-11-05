@@ -3215,15 +3215,18 @@ PluginPage {
                 }
 
                 ScrollView {
+                    id: sheetScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    bottomPadding: 70          // 盖住面板探出屏幕的那 6%，最后一项也滚得到
+                    bottomPadding: 80          // 盖住面板探出屏幕的那 6%，最后一项也滚得到
                     ScrollBar.vertical.policy: ScrollBar.AsNeeded
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                     ColumnLayout {
-                        width: sheet.width - 44 - 14
+                        // 用 availableWidth（已扣掉滚动条），不要写死 -14：
+                        // 高分屏/主题下滚动条不是 14 像素，写死就会把右边「移除」按钮挤出画面
+                        width: sheetScroll.availableWidth
                         spacing: 12
 
                         Frame {

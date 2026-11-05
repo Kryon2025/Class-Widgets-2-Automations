@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""全屏文字播放：滚动 / 静止停留，右键（触屏长按）退出。
+"""全屏文字播放：滚动 / 静止停留，右键弹出「编辑文本 / 退出」菜单。
 
 给自动化提供两个入口：
     1. 行动「全屏滚动文字」→ show_scroll_text()
@@ -8,7 +8,7 @@
 设计要点：
     - 纯 QWidget 实现，不依赖宿主 QML 结构，避免跟着主程序改版失效；
     - 真·全屏、无边框、置顶，纯黑不透明背景（盖住任务栏）；
-    - 退出方式：鼠标右键、触摸屏长按 0.7 秒（等价于右键）、Esc；
+    - 右键 → 弹出菜单「编辑文本 / 退出」；触摸屏长按 0.7 秒合成同一次右键；
     - 文字宽度不超过屏幕 → 静止居中停留 p2 秒；超过 → 从右往左滚动。
 
 线程：窗口必须在 GUI 线程创建。init() 在插件 on_load（GUI 线程）调用，
@@ -18,11 +18,13 @@ from __future__ import annotations
 
 from loguru import logger
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor, QContextMenuEvent, QFont, QGuiApplication, QPainter,
+)
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
-    QSpinBox, QVBoxLayout, QWidget,
+    QApplication, QComboBox, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
+    QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
 # 速度档位（像素/秒）
@@ -94,21 +96,26 @@ def _primary_rect():
 class _BaseOverlay(QWidget):
     """全屏置顶遮罩窗口基类。
 
-    退出：鼠标右键 → 立即关闭；触摸屏长按 0.7 秒 → 关闭（等同于右键）。
     用 Qt.Window 而不是 Qt.Tool：Tool 窗口在 Windows 上全屏时盖不住任务栏，
     表现就是「看着不全屏」。
+
+    右键行为：子类实现 contextMenuEvent()（播放窗口用它弹菜单）。
+    触摸屏：Qt 只会把触摸合成为左键，长按拿不到右键，所以这里手动把
+    「长按 0.7 秒」合成为一次右键（QContextMenuEvent），走的是同一条右键路径。
     """
 
-    def __init__(self, exit_on_right: bool = True):
+    MENU_HINT = "右键：编辑 / 退出"
+
+    def __init__(self, touch_right_click: bool = True):
         super().__init__()
-        self.exit_on_right = exit_on_right
+        self.touch_right_click = touch_right_click
         self.setWindowFlags(
             Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WA_DeleteOnClose, True)
-        # 自己收触摸事件，才能判定「长按」；否则系统可能把长按直接吞掉
+        # 自己收触摸事件，才能判定「长按」
         self.setAttribute(Qt.WA_AcceptTouchEvents, True)
-        # 不透明背景：由子类 paintEvent 自己涂满，避免先刷一层白底再涂黑
+        # 不透明背景：由子类 paintEvent 涂满，避免先刷一层白底再涂黑
         self.setAttribute(Qt.WA_OpaquePaintEvent, True)
         self.setAutoFillBackground(False)
 
@@ -117,32 +124,24 @@ class _BaseOverlay(QWidget):
         self._touch_timer.setSingleShot(True)
         self._touch_timer.timeout.connect(self._on_touch_long_press)
 
-    # ── 退出判定 ────────────────────────────────────────
+    # ── 触摸长按 → 合成右键 ─────────────────────────────
     def _on_touch_long_press(self):
+        pt = self._touch_pt
         self._touch_pt = None
-        if self.exit_on_right:
-            self.close()
+        if pt is not None and self.touch_right_click:
+            self._fire_right_click(pt)
 
-    def mousePressEvent(self, ev):
-        # Windows 对触摸长按有时也会合成一次右键，一并接住
-        if self.exit_on_right and ev.button() == Qt.RightButton:
-            ev.accept()
-            self.close()
-            return
-        super().mousePressEvent(ev)
-
-    def contextMenuEvent(self, ev):
-        if self.exit_on_right:
-            ev.accept()
-            self.close()
-            return
-        super().contextMenuEvent(ev)
+    def _fire_right_click(self, pos):
+        """在 pos 处合成一次右键（上下文菜单）事件。"""
+        p = QPoint(int(pos.x()), int(pos.y()))
+        ev = QContextMenuEvent(QContextMenuEvent.Mouse, p, self.mapToGlobal(p))
+        QApplication.sendEvent(self, ev)
 
     def touchEvent(self, ev):
         et = ev.type()
         pts = ev.points()
         if et == QEvent.TouchBegin:
-            if self.exit_on_right and pts:
+            if pts:
                 self._touch_pt = pts[0].position()
                 self._touch_timer.start(LONG_PRESS_MS)
             ev.accept()
@@ -150,6 +149,7 @@ class _BaseOverlay(QWidget):
         if et == QEvent.TouchUpdate:
             if self._touch_pt is not None and pts:
                 d = pts[0].position() - self._touch_pt
+                # 手指在滑动 → 不算长按
                 if abs(d.x()) + abs(d.y()) > TOUCH_MOVE_TOLERANCE:
                     self._touch_timer.stop()
                     self._touch_pt = None
@@ -168,13 +168,14 @@ class _BaseOverlay(QWidget):
             return
         super().keyPressEvent(ev)
 
-
 class _ScrollWindow(_BaseOverlay):
     """播放窗口：文字超宽则滚动，否则居中停留。"""
 
     def __init__(self, text: str, duration: int, speed: str, size: str):
         super().__init__()
         self._text = text
+        self._speed_key = speed if speed in SPEEDS else "normal"
+        self._size_key = size if size in SIZE_PX else "normal"
         self._speed = SPEEDS.get(speed, SPEEDS["normal"])
         self._duration = max(0, int(duration or 0))
         self._elapsed = 0.0
@@ -191,7 +192,7 @@ class _ScrollWindow(_BaseOverlay):
         self._label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self._label.adjustSize()
 
-        self._hint = QLabel("右键退出（触摸屏长按 0.7 秒）", self)
+        self._hint = QLabel("右键：编辑 / 退出（触摸屏长按）", self)
         hf = QFont()
         hf.setPixelSize(20)
         self._hint.setFont(hf)
@@ -203,6 +204,7 @@ class _ScrollWindow(_BaseOverlay):
         self._timer.setInterval(FRAME_MS)
         self._timer.timeout.connect(self._tick)
         self._static = False
+        self._menu = None
 
     # ── 绘制 ────────────────────────────────────────────
     def paintEvent(self, ev):
@@ -226,6 +228,38 @@ class _ScrollWindow(_BaseOverlay):
             self._label.move(w, max(0, (h - lh) // 2))
         self._hint.move(w - self._hint.width() - 24, 20)
         self._timer.start()
+
+    # ── 右键菜单 ────────────────────────────────────────
+    def contextMenuEvent(self, ev):
+        ev.accept()
+        if self._menu is not None and self._menu.isVisible():
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu{background:#1c1c1c; color:#fff; border:1px solid #3a3a3a;"
+            " padding:6px; border-radius:8px;}"
+            "QMenu::item{padding:8px 26px 8px 18px; border-radius:6px;}"
+            "QMenu::item:selected{background:#2f7cf6;}")
+        a_edit = menu.addAction("编辑文本")
+        menu.addSeparator()
+        a_quit = menu.addAction("退出")
+        a_edit.triggered.connect(self._menu_edit)
+        a_quit.triggered.connect(self.close)
+        menu.aboutToHide.connect(self._menu_hidden)
+        self._menu = menu
+        self._timer.stop()                  # 菜单开着的时候文字先别动
+        menu.popup(ev.globalPos())          # 非阻塞：不进嵌套事件循环
+
+    def _menu_hidden(self):
+        self._menu = None
+        if _alive(self) and self.isVisible():
+            self._timer.start(FRAME_MS)     # 只是关掉菜单 → 继续播
+
+    def _menu_edit(self):
+        text, dur = self._text, self._duration
+        speed, size = self._speed_key, self._size_key
+        self.close()
+        open_editor(text, dur, speed, size)
 
     # ── 动画 ────────────────────────────────────────────
     def _tick(self):
@@ -253,9 +287,10 @@ class _ScrollWindow(_BaseOverlay):
 class _EditorWindow(_BaseOverlay):
     """手动触发：输入文字后直接播放。输入区放在屏幕上方，避免被屏幕键盘挡住。"""
 
-    def __init__(self):
-        # 编辑器里右键常用来粘贴，不拿它当退出键；退出用「取消」或 Esc
-        super().__init__(exit_on_right=False)
+    def __init__(self, text: str = "", duration: int = 0,
+                 speed: str = "normal", size: str = "normal"):
+        # 编辑器里右键留给输入框自己的粘贴菜单，不合成右键
+        super().__init__(touch_right_click=False)
         self.setFocusPolicy(Qt.StrongFocus)
 
         root = QVBoxLayout(self)
@@ -270,13 +305,15 @@ class _EditorWindow(_BaseOverlay):
         title.setStyleSheet("color: #ffffff;")
         root.addWidget(title)
 
-        tip = QLabel("输入要显示的文字，点「开始播放」。播放时右键（触屏长按）退出。", self)
+        tip = QLabel("输入要显示的文字，点「开始播放」。播放时右键（触屏长按）可编辑文字或退出。", self)
         tip.setStyleSheet("color: rgba(255,255,255,170);")
         tip.setWordWrap(True)
         root.addWidget(tip)
 
         self.edit = QPlainTextEdit(self)
         self.edit.setPlaceholderText("在这里输入文字…")
+        if text:
+            self.edit.setPlainText(text)
         f = QFont()
         f.setPixelSize(24)
         self.edit.setFont(f)
@@ -296,21 +333,23 @@ class _EditorWindow(_BaseOverlay):
         row.addWidget(lab("到时自动关闭（秒，0=一直显示到退出）"))
         self.dur = QSpinBox(self)
         self.dur.setRange(0, 3600)
-        self.dur.setValue(0)
+        self.dur.setValue(max(0, int(duration or 0)))
         self.dur.setStyleSheet("QSpinBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
         row.addWidget(self.dur)
 
         row.addWidget(lab("速度"))
         self.speed = QComboBox(self)
         self.speed.addItems([SPEED_LABELS[k] for k in ("slow", "normal", "fast")])
-        self.speed.setCurrentIndex(1)
+        self.speed.setCurrentIndex(("slow", "normal", "fast").index(
+            speed if speed in SPEEDS else "normal"))
         self.speed.setStyleSheet("QComboBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
         row.addWidget(self.speed)
 
         row.addWidget(lab("字号"))
         self.size = QComboBox(self)
         self.size.addItems([SIZE_LABELS[k] for k in ("small", "normal", "large")])
-        self.size.setCurrentIndex(1)
+        self.size.setCurrentIndex(("small", "normal", "large").index(
+            size if size in SIZE_PX else "normal"))
         self.size.setStyleSheet("QComboBox{background: rgba(255,255,255,24); color:#fff; padding:4px;}")
         row.addWidget(self.size)
         row.addStretch(1)
@@ -386,8 +425,9 @@ def show_scroll_text(text: str, duration: int = 0, speed: str = "normal",
     _on_gui(_run)
 
 
-def open_editor() -> None:
-    """打开手动输入窗口（设置页按钮用）。"""
+def open_editor(text: str = "", duration: int = 0, speed: str = "normal",
+                size: str = "normal") -> None:
+    """打开手动输入窗口（设置页按钮用；播放窗口的「编辑文本」也会调它并预填内容）。"""
 
     def _run():
         global _editor
@@ -396,7 +436,7 @@ def open_editor() -> None:
             _editor.raise_()
             _editor.activateWindow()
             return
-        _editor = _EditorWindow()
+        _editor = _EditorWindow(text, duration, speed, size)
         _editor.destroyed.connect(_forget_editor)
         _editor.showFullScreen()
         _editor.raise_()
