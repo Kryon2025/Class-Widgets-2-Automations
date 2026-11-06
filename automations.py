@@ -110,14 +110,21 @@ A_SYS_NOTIFY = "sys_notify"       # 发系统通知（toast）：p1 标题 p2 �
 A_ROLLCALL_ROLL = "rollcall_roll"     # 触发点名：p1 = 人数(1~5)
 A_ROLLCALL_SET = "rollcall_set"       # 设置随机点名配置项：p1 = 键 p2 = 值
 A_ROLLCALL_CLOSE = "rollcall_close"   # 关闭点名结果窗口
+# 全量展示课程联动（扩展功能，需 com.yersmagit.lessonsdisplayer 插件在场）
+A_LESSON_MODE = "lesson_mode"         # 课程展示模式：p1 = whiteboard / blackboard / exit
+# 全屏播放文字：p1 = 文字, p2 = 停留时长(秒, 0=自动), p3 = 速度, p4 = 字号
+A_SCROLL_TEXT = "scroll_text"
 
 # 随机点名插件的 id
 ROLLCALL_PLUGIN_ID = "com.rollcall"
+# 全量展示课程插件的 id
+LESSONSDISPLAYER_PLUGIN_ID = "com.yersmagit.lessonsdisplayer"
 
 ACTION_TYPES = (A_RUN, A_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
                 A_POWER, A_VOLUME, A_MEDIA, A_SYS_NOTIFY,
-                A_ROLLCALL_ROLL, A_ROLLCALL_SET, A_ROLLCALL_CLOSE)
+                A_ROLLCALL_ROLL, A_ROLLCALL_SET, A_ROLLCALL_CLOSE,
+                A_LESSON_MODE, A_SCROLL_TEXT)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -294,6 +301,14 @@ class RuleEngine(QObject):
         # ② 模型空 → 从旧 JSON 迁移（首次升级时走这条）
         if not (isinstance(raw, dict) and raw.get("rules")):
             try:
+                if not self._storage.is_file():
+                    # 3.1.0 起本插件回归 com.kryon.automations：首次启动时把
+                    # 3.0.x 版「更好的自动化」的规则文件复制过来，避免用户重配
+                    old_file = self._storage.parent / "org.cslblog.betterautomations.json"
+                    if old_file.is_file():
+                        import shutil as _shutil
+                        _shutil.copyfile(old_file, self._storage)
+                        logger.info("[automations] 已从 3.0.x「更好的自动化」迁移规则文件")
                 if self._storage.is_file():
                     legacy = json.loads(self._storage.read_text(encoding="utf-8"))
                     if isinstance(legacy, dict) and legacy.get("rules"):
@@ -959,11 +974,27 @@ class RuleEngine(QObject):
             for rule in self._rules:
                 if not rule.get("enabled"):
                     continue
-                if any(tr.get("type") == ttype for tr in (rule.get("triggers") or [])):
+                # 上课/下课触发器支持 p1 限定科目（留空 = 任意课）
+                for tr in (rule.get("triggers") or []):
+                    if tr.get("type") != ttype:
+                        continue
+                    if ttype in (T_CLASS_START, T_CLASS_END):
+                        want = str(tr.get("p1") or "").strip()
+                        if want and not self._subject_match(self._trigger_subject(ttype), want):
+                            continue
                     self._maybe_fire(rule, {"type": ttype})
+                    break
 
         was_class = prev in ("class", "activity")
         is_class = host in ("class", "activity")
+
+        # 上课铃一响：远程推来的横幅一律撤掉（插件自己规则触发的播放不动）
+        if not was_class and is_class:
+            try:
+                import scroll_text
+                scroll_text.close_external_banner()
+            except Exception as e:                   # noqa: BLE001
+                logger.debug("[automations] 关闭远程横幅失败: {}", e)
 
         if T_STATUS_CHANGE in (t.get("type") for r in self._rules for t in r.get("triggers") or []):
             fire(T_STATUS_CHANGE)
@@ -1117,6 +1148,10 @@ class RuleEngine(QObject):
                 self._do_rollcall_set(action)
             elif atype == A_ROLLCALL_CLOSE:
                 self._do_rollcall_close(action)
+            elif atype == A_LESSON_MODE:
+                self._do_lesson_mode(action)
+            elif atype == A_SCROLL_TEXT:
+                self._do_scroll_text(action)
             elif atype == A_WAIT:
                 wait_ms = max(0, int(float(action.get("p1") or 0)) * 1000)
         except Exception as e:
@@ -1575,6 +1610,64 @@ class RuleEngine(QObject):
     ROLLCALL_BOOL_KEYS = ("luck_enabled", "no_repeat", "window_visible",
                           "float_mode", "click_hide")
 
+    def _lessons_displayer(self):
+        """取全量展示课程插件实例。同进程直接拿对象；未装/未启用则返回 None。"""
+        try:
+            pm = getattr(self._api._app, "plugin_manager", None)
+            plugins = getattr(pm, "_plugins", None)
+            if plugins:
+                return plugins.get(LESSONSDISPLAYER_PLUGIN_ID)
+        except Exception:
+            pass
+        return None
+
+    def _do_lesson_mode(self, a: dict) -> None:
+        """切换全量展示课程的显示模式：p1 = whiteboard / blackboard / exit。
+
+        直接调它 LessonsBackend 的三个 @Slot（与它自己 QML 里按钮调的是同一套），
+        不碰它的窗口、不改它的配置；退出时它自己会收尾。
+        """
+        plugin = self._lessons_displayer()
+        if plugin is None:
+            logger.warning("[automations] 全量展示课程插件不可用，跳过模式切换")
+            return
+        backend = getattr(plugin, "backend", None)
+        if backend is None:
+            logger.warning("[automations] 全量展示课程插件缺少 backend（版本不匹配？）")
+            return
+        mode = str(a.get("p1") or "whiteboard").strip().lower()
+        fn_name = {"whiteboard": "enterWhiteboard",
+                   "blackboard": "enterBlackboard",
+                   "exit": "exitSpecialMode"}.get(mode)
+        if fn_name is None:
+            logger.warning("[automations] 未知课程展示模式: {}", mode)
+            return
+        fn = getattr(backend, fn_name, None)
+        if not callable(fn):
+            logger.warning("[automations] 全量展示课程缺少接口 {}（版本不匹配？）", fn_name)
+            return
+        fn()
+        logger.info("[automations] 课程展示模式 -> {}", mode)
+
+    def _do_scroll_text(self, a: dict) -> None:
+        """全屏播放一段文字：超宽则滚动，否则居中停留指定时长。"""
+        text = str(a.get("p1") or "").strip()
+        if not text:
+            logger.warning("[automations] 全屏文字行动没有填写文字，跳过")
+            return
+        try:
+            dur = int(float(str(a.get("p2") or "0").strip() or 0))
+        except Exception:
+            dur = 0
+        speed = str(a.get("p3") or "normal").strip().lower() or "normal"
+        size = str(a.get("p4") or "normal").strip().lower() or "normal"
+        mode = str(a.get("p5") or "full").strip().lower() or "full"
+        try:
+            import scroll_text
+            scroll_text.show_scroll_text(text, dur, speed, size, mode)
+        except Exception as e:                        # noqa: BLE001
+            logger.warning("[automations] 全屏文字播放失败: {}", e)
+
     def _rollcall(self):
         """取随机点名插件实例。同进程直接拿对象；未装/未启用则返回 None。"""
         try:
@@ -1806,6 +1899,16 @@ class RuleEngine(QObject):
             return self._subject_by_id(subject_id)
         except Exception:
             return None
+
+    def _trigger_subject(self, ttype: str) -> Optional[Any]:
+        """上课/下课触发时对应的科目：优先当前科；下课时取不到当前科则回退上一科。"""
+        try:
+            s = getattr(self._api.runtime, "current_subject", None)
+        except Exception:
+            s = None
+        if s is None and ttype == T_CLASS_END:
+            s = self._prev_subject()
+        return s
 
     def _prev_subject(self) -> Optional[Any]:
         try:

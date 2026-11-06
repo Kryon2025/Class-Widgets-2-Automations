@@ -17,6 +17,7 @@ from PySide6.QtCore import Signal, Slot
 from automations import RuleEngine
 from widget_backend import AutomationsWidgetBackend
 import deps
+import scroll_text
 
 CFG_NAME = "com.kryon.automations.json"
 
@@ -62,6 +63,7 @@ class Plugin(CW2Plugin):
         self._task: RuleEngineTask | None = None
         self._debugger = None
         self._widget_backend: AutomationsWidgetBackend | None = None
+        self._old_plugin_on = False      # 旧的「Kryon的自动化」是否仍在启用
 
     def on_load(self):
         super().on_load()
@@ -79,7 +81,7 @@ class Plugin(CW2Plugin):
         try:
             provider = self.api.notification.register_provider(
                 provider_id=getattr(self, "pid", None) or "com.kryon.automations",
-                name="Kryon 自动化 / Kryon Automations",
+                name="Kryon的自动化 / Automations",
                 icon="icon.png",
                 # 必须为 False：True 会让宿主把每条灵动通知【自动镜像】成一条
                 # 系统通知，用户会看到"灵动通知结束后又响一声另一种样式"的重复打扰。
@@ -111,10 +113,22 @@ class Plugin(CW2Plugin):
             logger.warning("[automations] 引擎启动失败: {}", e)
             self._engine = None
 
+        # 全屏文字播放窗口的 GUI 桥（必须在这里建立，on_load 处于 GUI 线程）
+        try:
+            scroll_text.init()
+        except Exception as e:
+            logger.warning("[automations] 全屏文字模块初始化失败: {}", e)
+
+        # 检测旧插件是否还在启用：两套引擎并存会让同一条规则触发两次
+        try:
+            self._old_plugin_on = self._detect_old_plugin()
+        except Exception as e:
+            logger.warning("[automations] 旧插件检测失败: {}", e)
+
         try:
             self.api.ui.register_settings_page(
                 qml_path=str(Path(__file__).parent / "qml" / "settings.qml"),
-                title="自动化",
+                title="Kryon的自动化",
                 icon="ic_fluent_arrow_autofit_height_20_regular",
             )
             logger.info("[automations] 设置页注册成功")
@@ -254,6 +268,108 @@ class Plugin(CW2Plugin):
         except Exception as e:
             logger.warning("[automations] 记录提示状态失败: {}", e)
             return False
+
+
+    # ── 旧插件并存检测 ──────────────────────────────────────
+    def _detect_old_plugin(self) -> bool:
+        """3.0.x 的「更好的自动化」若仍在本机且处于启用状态，返回 True。
+
+        3.1.0 起回归 com.kryon.automations，规则已自动迁移；
+        两套引擎同时跑会让同一条规则触发两次，所以检测到就提示一次。
+        """
+        root = _app_root()
+        old_id = "org.cslblog.betterautomations"
+        if not (root / "plugins" / old_id).exists():
+            return False
+        enabled = []
+        try:
+            cfg = json.loads((root / "configs" / "configs.json").read_text(encoding="utf-8"))
+            enabled = ((cfg.get("plugins") or {}).get("enabled") or [])
+        except Exception as e:                            # noqa: BLE001
+            logger.debug("[automations] 读 configs.json 失败，按已启用处理: {}", e)
+            enabled = [old_id]
+        if old_id not in enabled:
+            return False
+        # 只弹一次系统通知，避免每次开机都打扰
+        flag = root / "configs" / "plugins" / f"{getattr(self, 'pid', '') or CFG_NAME[:-5]}.old_plugin_notified"
+        if not flag.exists():
+            try:
+                import notify
+                notify.send(
+                    "Kryon的自动化",
+                    "检测到旧插件「更好的自动化」仍在启用。请停用或卸载它，否则同一条规则会触发两次；规则已自动迁移，无需重新配置。",
+                )
+            except Exception as e:                        # noqa: BLE001
+                logger.warning("[automations] 旧插件提示通知发送失败: {}", e)
+            try:
+                flag.parent.mkdir(parents=True, exist_ok=True)
+                flag.write_text("1", encoding="utf-8")
+            except Exception:                             # noqa: BLE001
+                pass
+        logger.warning("[automations] 旧插件 org.cslblog.betterautomations 仍在启用，已提示用户停用")
+        return True
+
+    # ── 全屏播放文字 ────────────────────────────────────────
+    @Slot()
+    def openScrollTextEditor(self) -> None:
+        """手动触发：打开输入窗口，输入后直接全屏播放。"""
+        try:
+            scroll_text.open_editor()
+        except Exception as e:                        # noqa: BLE001
+            logger.warning("[automations] 打开全屏文字输入窗口失败: {}", e)
+
+    @Slot(str, int, str, str)
+    def playScrollText(self, text: str, duration: int, speed: str, size: str) -> None:
+        try:
+            scroll_text.show_scroll_text(text, duration, speed, size)
+        except Exception as e:                        # noqa: BLE001
+            logger.warning("[automations] 全屏文字播放失败: {}", e)
+
+    # 上课 / 活动期间一律不准推送（远程横幅也不许弹）
+    BLOCKING_STATUS = ("class", "activity")
+
+    def _blocking_status(self) -> str:
+        """当前是否落在「不准推送」的状态里；是则返回状态名，否则返回空串。"""
+        try:
+            status = str(self._engine._safe_status() or "") if self._engine else ""
+        except Exception:                             # noqa: BLE001
+            status = ""
+        return status if status in self.BLOCKING_STATUS else ""
+
+    @Slot(result=str)
+    def bannerBlockReason(self) -> str:
+        """给别的插件问「现在能不能推横幅」：能推返回空串，不能推返回原因。"""
+        status = self._blocking_status()
+        if not status:
+            return ""
+        return "正在上课，禁止推送横幅" if status == "class" else "正在活动，禁止推送横幅"
+
+    @Slot(str, int, result=bool)
+    def playBanner(self, text: str, duration: int) -> bool:
+        """供其它插件（如「课表同步」远程推送）调用：只以顶部横幅模式显示一段文字。
+
+        duration 为秒，0 = 一直显示到手动退出。返回是否成功弹出。
+        上课 / 活动中直接拒绝，不弹也不排队。
+        """
+        try:
+            body = str(text or "").strip()
+            if not body:
+                return False
+            status = self._blocking_status()
+            if status:
+                logger.warning("[automations] 当前状态 {}，拒绝远程横幅", status)
+                return False
+            scroll_text.show_scroll_text(body, max(0, int(duration or 0)),
+                                         "normal", "normal", "banner", external=True)
+            logger.info("[automations] 外部调用播放横幅: {} 字, {}s", len(body), duration)
+            return True
+        except Exception as e:                        # noqa: BLE001
+            logger.warning("[automations] 播放横幅失败: {}", e)
+            return False
+
+    @Slot(result=bool)
+    def oldPluginConflict(self) -> bool:
+        return bool(self._old_plugin_on)
 
     @Slot(result=str)
     def getRulesJson(self) -> str:

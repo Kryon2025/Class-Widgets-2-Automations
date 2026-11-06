@@ -16,12 +16,17 @@ import ClassWidgets.Plugins
 PluginPage {
     id: page
     pluginId: "com.kryon.automations"
-    title: "自动化"
+    title: "Kryon的自动化"
 
     // 页头只留工具按钮：「随机点名联动 / 系统通知」两个开关已收进
     // 主界面的「扩展功能」折叠列表（见下方 SettingsLayout）。
     extraHeaderItems: RowLayout {
         spacing: 8
+
+        Button {
+            text: "全屏播放文字"
+            onClicked: if (backend && backend.openScrollTextEditor) backend.openScrollTextEditor()
+        }
 
         Button {
             text: "窗口调试"
@@ -104,6 +109,8 @@ PluginPage {
             "set_config", "lock", "restart", "open_settings", "set_theme", "power", "volume", "media", "app"]
         if (page.sysNotifyExt) a = a.concat(["sys_notify"])
         if (page.rollcallExt) a = a.concat(["rollcall_roll", "rollcall_set", "rollcall_close"])
+        a = a.concat(["lesson_mode"])
+        a = a.concat(["scroll_text"])
         return a
     }
     readonly property var actLabels: {
@@ -112,8 +119,20 @@ PluginPage {
             "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理"]
         if (page.sysNotifyExt) a = a.concat(["发系统通知"])
         if (page.rollcallExt) a = a.concat(["触发随机点名", "设置随机点名", "关闭点名窗口"])
+        a = a.concat(["课程展示模式"])
+        a = a.concat(["全屏播放文字"])
         return a
     }
+    // 全屏播放文字的速度 / 字号档位（与 scroll_text.py 保持一致）
+    property var scrollSpeeds: ["slow", "normal", "fast"]
+    property var scrollSpeedLabels: ["慢", "正常", "快"]
+    property var scrollSizes: ["small", "normal", "large"]
+    property var scrollSizeLabels: ["小", "中", "大"]
+    property var scrollModes: ["full", "banner"]
+    property var scrollModeLabels: ["全屏", "顶部横幅"]
+    // 课程展示模式（联动 com.yersmagit.lessonsdisplayer）
+    property var lessonModes: ["whiteboard", "blackboard", "exit"]
+    property var lessonModeLabels: ["白板模式", "息屏模式", "退出特殊模式"]
 
     // ── 随机点名（com.rollcall）配置项清单（顺序 = 后端 ROLLCALL_SETTERS）
     property var rollcallKeys: ["luck_enabled", "no_repeat", "animation_seconds",
@@ -319,6 +338,14 @@ PluginPage {
     Component.onCompleted: firstLoad.start()
     // backend 一到也不马上取数：同样推到页面完全建好之后（与 firstLoad 合并成一次）。
     onBackendChanged: { if (backend) firstLoad.restart() }
+    // 编辑面板被挂到窗口根节点（见 editorDialog 的 parent），不会随本页一起销毁；
+    // 离开本页时把它收掉，避免残留一层全屏遮罩。
+    Component.onDestruction: {
+        if (editorDialog) {
+            editorDialog.visible = false
+            editorDialog.parent = page
+        }
+    }
 
     function cur() {
         // 编辑页打开时，所有字段写进草稿；点「保存」才写回配置，取消即丢弃。
@@ -659,6 +686,7 @@ PluginPage {
             if (page.apps[i] && page.apps[i].target === target) return page.apps[i].name || target
         return String(target || "")
     }
+    function subjectOptions() { return ["（任意课）"].concat(page.subjects) }
     function detailOf(t) {
         if (!t) return ""
         switch (t.type) {
@@ -691,7 +719,11 @@ PluginPage {
             case "run": return t.p1 || ""
             case "app": return (t.p4 === "close" ? "关闭 " : "打开 ") + page.appNameOf(t.p1)
             case "notify": return t.p1 || ""
-            case "wait": return t.p1 ? (t.p1 + " 秒") : ""
+            case "wait": {
+                var w = parseInt(t.p1 || "0") || 0
+                if (!w) return ""
+                return (w >= 60 ? (Math.floor(w / 60) + " 分 " + (w % 60) + " 秒") : (w + " 秒"))
+            }
             case "broadcast": return t.p1 || ""
             case "set_flag": return t.p1 || ""
             case "set_config": return page.keyLabelOf(t.p1)
@@ -711,6 +743,14 @@ PluginPage {
             case "rollcall_config": return page.labelOf(page.rollcallKeys, page.rollcallLabels, t.p1)
                 + " = " + (t.p2 || "")
             case "rollcall_close": return "关闭点名窗口"
+            case "class_start": return t.p1 ? ("仅「" + t.p1 + "」") : ""
+            case "class_end": return t.p1 ? ("仅「" + t.p1 + "」") : ""
+            case "lesson_mode": return page.lessonModeLabels[Math.max(0, page.lessonModes.indexOf(t.p1))]
+            case "scroll_text": {
+                var s1 = String(t.p1 || "")
+                if (!s1) return "（未填文字）"
+                return "「" + (s1.length > 12 ? s1.slice(0, 12) + "…" : s1) + "」"
+            }
             default: return ""
         }
     }
@@ -867,6 +907,8 @@ PluginPage {
             case "alarm": return trigAlarmComp
             case "rollcall_start": return trigRollcallStartComp
             case "rollcall_picked": return trigRollcallPickedComp
+            case "class_start":
+            case "class_end": return trigSubjectComp
             default: return null
         }
     }
@@ -910,6 +952,8 @@ PluginPage {
             case "rollcall_roll": return actRollcallRollComp
             case "rollcall_set": return actRollcallSetComp
             case "rollcall_close": return actRollcallCloseComp
+            case "lesson_mode": return actLessonModeComp
+            case "scroll_text": return actScrollTextComp
             default: return null
         }
     }
@@ -945,6 +989,7 @@ PluginPage {
             property var it: null
             function load(item) { it = item }
             Text { text: "随机点名开始滚动时（无需参数）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -955,6 +1000,7 @@ PluginPage {
             property var it: null
             function load(item) { it = item }
             Text { text: "随机点名出结果后（无需参数）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -985,7 +1031,8 @@ PluginPage {
                 if (!/^\d{2}:\d{2}$/.test(hm)) return
                 it.p1 = hm + ":" + ("0" + Math.round(secF.value)).slice(-2)
             }
-            RowLayout {
+            // Flow 而非 RowLayout：窄窗口下自动换行，不会溢出压住「移除」按钮
+            Flow {
                 Layout.fillWidth: true
                 spacing: 8
                 TimePicker {
@@ -994,17 +1041,25 @@ PluginPage {
                     use24Hour: true
                     onTimeChanged: timeRoot.save()
                 }
-                SpinBox {
-                    id: secF
-                    from: 0
-                    to: 59
-                    editable: true
-                    Layout.preferredWidth: 96
-                    onValueModified: timeRoot.save()
+                // 时:分:秒 —— 秒跟在时间后面，不要跑到前面去
+                RowLayout {
+                    spacing: 4
+                    SpinBox {
+                        id: secF
+                        from: 0
+                        to: 59
+                        editable: true
+                        Layout.preferredWidth: 92
+                        onValueModified: timeRoot.save()
+                    }
+                    Text { text: "秒"; opacity: 0.72 }
                 }
-                Text { text: "星期" }
-                WeekdayPicker { id: weekBox }
-                Item { Layout.fillWidth: true }
+                // 「星期 + 七个圆点」绑成一组，换行时一起下去
+                RowLayout {
+                    spacing: 6
+                    Text { text: "星期"; opacity: 0.72 }
+                    WeekdayPicker { id: weekBox }
+                }
             }
             Switch {
                 id: skipSw
@@ -1051,7 +1106,7 @@ PluginPage {
                 loading = false
             }
 
-            RowLayout {
+            Flow {
                 Layout.fillWidth: true
                 spacing: 8
                 TimePicker {
@@ -1060,17 +1115,23 @@ PluginPage {
                     use24Hour: true
                     onTimeChanged: alarmRoot.save()
                 }
-                SpinBox {
-                    id: alarmSec
-                    from: 0
-                    to: 59
-                    editable: true
-                    Layout.preferredWidth: 96
-                    onValueModified: alarmRoot.save()
+                RowLayout {
+                    spacing: 4
+                    SpinBox {
+                        id: alarmSec
+                        from: 0
+                        to: 59
+                        editable: true
+                        Layout.preferredWidth: 92
+                        onValueModified: alarmRoot.save()
+                    }
+                    Text { text: "秒"; opacity: 0.72 }
                 }
-                Text { text: "星期" }
-                WeekdayPicker { id: alarmWeek }
-                Item { Layout.fillWidth: true }
+                RowLayout {
+                    spacing: 6
+                    Text { text: "星期"; opacity: 0.72 }
+                    WeekdayPicker { id: alarmWeek }
+                }
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -1137,6 +1198,32 @@ PluginPage {
                 onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "秒" }
+            Item { Layout.fillWidth: true }
+        }
+    }
+
+    Component {
+        id: trigSubjectComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                var opts = page.subjectOptions()
+                subjCombo.currentIndex = Math.max(0, opts.indexOf(item.p1 || ""))
+            }
+            ComboBox {
+                id: subjCombo
+                Layout.fillWidth: true
+                model: page.subjectOptions()
+                onActivated: if (it) it.p1 = (index === 0 ? "" : page.subjectOptions()[index])
+            }
+            Text {
+                text: "留「任意课」表示每节都触发"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
         }
     }
 
@@ -1159,6 +1246,7 @@ PluginPage {
                 onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "秒前（上课/课间开始前触发）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1246,6 +1334,7 @@ PluginPage {
             Text {
                 text: qsTr("秒")
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1289,6 +1378,7 @@ PluginPage {
             Text {
                 text: qsTr("秒")
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1770,6 +1860,7 @@ PluginPage {
                 visible: !isBoolKey()
                 onValueChanged: write()
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -1976,19 +2067,32 @@ PluginPage {
             spacing: 6
             property var it: null
             property bool loading: false
+            // p1 仍存「总秒数」，老规则直接兼容；界面上拆成 分 + 秒
+            function total() { return Math.max(0, Math.round(minSpin.value) * 60 + Math.round(secSpin.value)) }
+            function save() { if (it) it.p1 = String(total()) }
             function load(item) {
                 it = item
                 loading = true
-                secSpin.value = parseInt(item.p1 || "1")
+                var t = Math.max(0, parseInt(item.p1 || "1") || 0)
+                minSpin.value = Math.floor(t / 60)
+                secSpin.value = t % 60
                 loading = false
             }
             SpinBox {
+                id: minSpin
+                Layout.preferredWidth: 104
+                from: 0; to: 1440; stepSize: 1; editable: true
+                onValueChanged: if (!loading) save()
+            }
+            Text { text: "分" }
+            SpinBox {
                 id: secSpin
-                Layout.preferredWidth: 120
-                from: 0; to: 3600; stepSize: 1; editable: true
-                onValueChanged: if (it) it.p1 = String(Math.round(value))
+                Layout.preferredWidth: 104
+                from: 0; to: 59; stepSize: 1; editable: true
+                onValueChanged: if (!loading) save()
             }
             Text { text: "秒（暂停后再执行下一条行动）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -2054,6 +2158,7 @@ PluginPage {
                 onValueChanged: if (it) it.p1 = String(Math.round(value))
             }
             Text { text: "人（一次点名抽几人）" }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -2104,6 +2209,7 @@ PluginPage {
                 visible: !isBoolKey()
                 onValueChanged: write()
             }
+            Item { Layout.fillWidth: true }
         }
     }
 
@@ -2113,7 +2219,124 @@ PluginPage {
             spacing: 6
             property var it: null
             function load(item) { it = item }
-            Text { text: "关闭点名结果窗口（滚动中或已定格都能关）" }
+            Text {
+                text: "关闭点名结果窗口（滚动中或已定格都能关）"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+        }
+    }
+
+    Component {
+        id: actLessonModeComp
+        ColumnLayout {
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                if (!item.p1) item.p1 = "whiteboard"
+                modeCombo.currentIndex = Math.max(0, page.lessonModes.indexOf(item.p1))
+            }
+            ComboBox {
+                id: modeCombo
+                Layout.fillWidth: true
+                model: page.lessonModeLabels
+                onActivated: if (it) it.p1 = page.lessonModes[index]
+            }
+            Text {
+                text: "需要安装并启用「全量展示课程」插件（com.yersmagit.lessonsdisplayer）。白板模式 = 白底全屏，息屏模式 = 黑底全屏。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
+        }
+    }
+
+    Component {
+        id: actScrollTextComp
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                textF.text = item.p1 || ""
+                durSpin.value = parseInt(item.p2 || "0")
+                var si = page.scrollSpeeds.indexOf(item.p3 || "normal")
+                speedCombo.currentIndex = Math.max(0, si)
+                var zi = page.scrollSizes.indexOf(item.p4 || "normal")
+                sizeCombo.currentIndex = Math.max(0, zi)
+                var mi = page.scrollModes.indexOf(item.p5 || "full")
+                modeCombo.currentIndex = Math.max(0, mi)
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                TextField {
+                    id: textF
+                    Layout.fillWidth: true
+                    placeholderText: "要显示的文字"
+                    onTextEdited: if (it) it.p1 = text
+                }
+            }
+            // Flow：窗口变窄时「速度」「字号」自动折到下一行
+            Flow {
+                Layout.fillWidth: true
+                spacing: 12
+                RowLayout {
+                    spacing: 4
+                    Text { text: "停留"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    SpinBox {
+                        id: durSpin
+                        Layout.preferredWidth: 96
+                        from: 0; to: 3600; stepSize: 1; editable: true
+                        onValueChanged: if (it) it.p2 = String(value)
+                    }
+                    Text { text: "秒"; height: 30; verticalAlignment: Text.AlignVCenter }
+                }
+                RowLayout {
+                    spacing: 4
+                    Text { text: "速度"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    ComboBox {
+                        id: speedCombo
+                        Layout.preferredWidth: 110
+                        model: page.scrollSpeedLabels
+                        onActivated: if (it) it.p3 = page.scrollSpeeds[index]
+                    }
+                }
+                RowLayout {
+                    spacing: 4
+                    Text { text: "字号"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    ComboBox {
+                        id: sizeCombo
+                        Layout.preferredWidth: 96
+                        model: page.scrollSizeLabels
+                        onActivated: if (it) it.p4 = page.scrollSizes[index]
+                    }
+                }
+                RowLayout {
+                    spacing: 4
+                    Text { text: "显示"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    ComboBox {
+                        id: modeCombo
+                        Layout.preferredWidth: 120
+                        model: page.scrollModeLabels
+                        onActivated: if (it) it.p5 = page.scrollModes[index]
+                    }
+                }
+            }
+            Text {
+                text: "停留 0 秒 = 一直显示到手动退出；文字不超屏时按此停留。顶部横幅只在屏幕上方占一条，不挡下面的内容。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
+            Text {
+                text: "播放时右键（触屏长按 0.7 秒）弹出菜单：编辑文本 / 退出。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
         }
     }
 
@@ -2676,6 +2899,22 @@ PluginPage {
                                   page.dismissHint("revert")
         }
 
+        // 旧插件并存提示：检测到 org.cslblog.betterautomations 仍启用时显示
+        InfoBar {
+            id: oldPluginHint
+            Layout.fillWidth: true
+            severity: Severity.Warning
+            title: "检测到旧插件「Kryon的自动化」仍在启用"
+            text: "两套自动化引擎同时运行，同一条规则会触发两次。请到插件广场停用或卸载「Kryon的自动化」——本插件的规则已自动迁移，无需重新配置。"
+            closable: true
+            visible: backend && backend.oldPluginConflict && backend.oldPluginConflict()
+                     && !(page.hintDismissed || {}).oldplugin
+            onVisibleChanged: if (!visible && backend && backend.oldPluginConflict
+                                  && backend.oldPluginConflict()
+                                  && !(page.hintDismissed || {}).oldplugin)
+                                  page.dismissHint("oldplugin")
+        }
+
         // 扩展功能：两个开关收进折叠列表，默认收起
         SettingExpander {
             id: extExpander
@@ -2872,23 +3111,27 @@ PluginPage {
         // 等于「一边被搬进 overlay、一边读 overlay」。实测这就是一点击就崩、
         // 且崩溃偏移每次都相同的现场。改成本页内的普通 Item，彻底不进那套机制。
         id: editorDialog
-        // 宽度跟 parent（横向不会造成循环），高度只跟窗口走。
-        // 之前 height 用了 parent.height，而宿主内容区的高度又由子项撑开，
-        // 于是「面板高度 ↔ 父项高度」互相依赖，滚动位置被反复重算：
-        // 现象就是快速下滑时闪一下又弹回去、最后一张卡永远够不到。
-        // 锚定顶部与左右、高度用显式值：
-        // 高度一旦写 parent.height 就会和「宿主内容区高度由子项撑开」互相依赖，
-        // 触发滚动回弹；而完全不锚定又会让面板回到布局流、被排到卡片列表下面，
-        // 于是盖不住卡片。这里两者兼顾。
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        // 等比自适应：面板高度 = 窗口高 × 1.06。
-        //   · 跟窗口等比缩放（放大窗口 → 面板与卡片一起变大）
-        //   · 多出的 6% 让底边必然落在窗口之外，Sheet 底边永远看不见
-        //   · 不要再用「硬凑的边距」去实现探出，那样会把内部 ScrollView 压扁
-        // 配套：ScrollView 设了 bottomPadding 70，正好盖住这 6%，最后一项仍滚得到。
-        height: (page.Window && page.Window.height ? page.Window.height : 640) * 1.06
+        // 几何分两步：
+        //   1) 挂到窗口根节点（不参与插件页的滚动内容，页面不会被撑高、不会多出滚动条）；
+        //   2) 但位置和大小取「本页在窗口里的可见区域」，所以不会盖住左侧侧边栏。
+        // 之前直接 anchors.fill 窗口，整块设置界面（含侧边栏）都被盖住了。
+        parent: (page.Window && page.Window.contentItem) ? page.Window.contentItem : page
+
+        // 本页左上角在窗口里的位置（场景坐标）→ 可见区域
+        readonly property real areaX: page.mapToItem(null, 0, 0).x
+        readonly property real areaY: Math.max(0, page.mapToItem(null, 0, 0).y)
+        readonly property real areaW: page.width
+        readonly property real areaH: {
+            var winH = parent ? parent.height : page.height
+            var h = winH - areaY
+            if (!(h > 200)) h = Math.max(320, page.height)
+            return h
+        }
+
+        x: areaX
+        width: areaW
+        y: areaY
+        height: Math.max(320, areaH - 16)   // 面板内再减 32（y=16 + 底部 16），底边不出窗口
         z: 1000
 
         // 关闭时不能立刻隐藏：那张纸还要往下滑 200ms，一隐藏动画就白做了。
@@ -2931,9 +3174,8 @@ PluginPage {
             // 里面再放三张模块卡（触发器 / 规则集 / 行动），层级和卡片列表页保持一致。
             id: sheet
             width: parent.width - 32
-            // 高度封顶到一个窗口：内容区可滚动，不封顶的话面板会比视口还高，
-            // 底部的按钮就会被挤到看不见的地方。
-            height: parent.height - 32      // 跟随面板（窗口 × 1.06），底边一起探出屏幕
+            // 高度封顶到一个窗口：内容区可滚动，不封顶的话面板会比视口还高。
+            height: parent.height - 32      // 上下各留 16，面板底边（圆角）完整可见
             x: 16
             radius: page.cardRadius
             // 颜色一律跟随主程序主题，不写死颜色值。
@@ -3008,15 +3250,18 @@ PluginPage {
                 }
 
                 ScrollView {
+                    id: sheetScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    bottomPadding: 70          // 盖住面板探出屏幕的那 6%，最后一项也滚得到
+                    bottomPadding: 24          // 底部留一点白，最后一项不贴着卡片边
                     ScrollBar.vertical.policy: ScrollBar.AsNeeded
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                     ColumnLayout {
-                        width: sheet.width - 44 - 14
+                        // 用 availableWidth（已扣掉滚动条），不要写死 -14：
+                        // 高分屏/主题下滚动条不是 14 像素，写死就会把右边「移除」按钮挤出画面
+                        width: sheetScroll.availableWidth
                         spacing: 12
 
                         Frame {
@@ -3032,28 +3277,51 @@ PluginPage {
                                     text: "基础设置"
                                 }
 
+                                // 名称 / 描述 / 开关各占一行：窗口变窄时输入框只变短、不互相挤压
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 8
-                                        Text { text: "名称"; Layout.preferredWidth: 36 }
+                                        Text {
+                                            text: "名称"
+                                            Layout.preferredWidth: 36
+                                            Layout.minimumWidth: 36
+                                        }
                                         TextField {
                                             id: nameField
                                             Layout.fillWidth: true
-                                            Layout.preferredWidth: 140
+                                            Layout.minimumWidth: 120
                                             placeholderText: "自动化名称"
                                             onTextEdited: page.commit("name", text)
                                         }
-                                        Text { text: "描述"; Layout.preferredWidth: 36 }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Text {
+                                            text: "描述"
+                                            Layout.preferredWidth: 36
+                                            Layout.minimumWidth: 36
+                                        }
                                         TextField {
                                             id: descField
                                             Layout.fillWidth: true
-                                            Layout.preferredWidth: 180
+                                            Layout.minimumWidth: 120
                                             placeholderText: "显示在卡片上的说明（可空）"
                                             onTextEdited: page.commit("description", text)
                                         }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 16
                                         Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
                                         Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
+                                        Item { Layout.fillWidth: true }
                                     }
+                                }
                             }
                         }
 
@@ -3080,7 +3348,9 @@ PluginPage {
                                         spacing: 6
                                         Repeater {
                                             model: page.trigCount
-                                            delegate: RowLayout {
+                                            // ColumnLayout：第一行是类型选择 + 移除，第二行参数占满整行，
+                                            // 这样窗口窄到只剩半屏也不会把参数框挤成一条缝
+                                            delegate: ColumnLayout {
                                                 id: trigRow
                                                 Layout.fillWidth: true
                                                 spacing: 6
@@ -3104,15 +3374,24 @@ PluginPage {
                                                 // 那次延后的版本号变更（onVerChanged）驱动，
                                                 // 保证发生在 delegate 建好之后。
 
-                                                ComboBox {
-                                                    id: trigType
-                                                    Layout.preferredWidth: 170
-                                                    model: page.trigLabels
-                                                    onActivated: {
-                                                        var r = page.cur(); if (!r || !r.triggers) return
-                                                        r.triggers[trigRow.idx] = {"type": page.trigTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
-                                                        trigRow.obj = r.triggers[trigRow.idx]
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 6
+                                                    ComboBox {
+                                                        id: trigType
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredWidth: 170
+                                                        Layout.minimumWidth: 110
+                                                        Layout.maximumWidth: 280
+                                                        model: page.trigLabels
+                                                        onActivated: {
+                                                            var r = page.cur(); if (!r || !r.triggers) return
+                                                            r.triggers[trigRow.idx] = {"type": page.trigTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
+                                                            trigRow.obj = r.triggers[trigRow.idx]
+                                                        }
                                                     }
+                                                    Item { Layout.fillWidth: true }
+                                                    Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeTrigger(trigRow.idx) }
                                                 }
                                                 Loader {
                                                     id: trigFld
@@ -3120,7 +3399,6 @@ PluginPage {
                                                     sourceComponent: page.trigFieldComp(trigRow.obj ? trigRow.obj.type : "")
                                                     onLoaded: trigRow.refreshFields()
                                                 }
-                                                Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeTrigger(trigRow.idx) }
                                             }
                                         }
                                         Button { text: "+ 添加触发器"; onClicked: page.addTrigger() }
@@ -3150,21 +3428,24 @@ PluginPage {
                                         Layout.fillWidth: true
                                         spacing: 8
 
-                                        RowLayout {
+                                        Flow {
                                             Layout.fillWidth: true
                                             spacing: 8
-                                            Text { text: "多个规则集之间" }
+                                            Text {
+                                                text: "多个规则集之间"
+                                                height: 32
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
                                             ComboBox {
                                                 id: rsGroupMode
-                                                Layout.preferredWidth: 130
+                                                width: 130
                                                 model: ["全部满足", "满足其一"]
                                                 onActivated: {
                                                     var r = page.cur()
                                                     if (r) r.rulesetMode = (index === 1 ? "any" : "all")
                                                 }
                                             }
-                                            Item { Layout.fillWidth: true }
-                                            Button { text: "+ 添加规则集"; onClicked: page.addRuleset() }
+                                            Button { text: "+ 添加规则集"; implicitHeight: 30; onClicked: page.addRuleset() }
                                         }
 
                                         Repeater {
@@ -3199,12 +3480,15 @@ PluginPage {
                                                     anchors.fill: parent
                                                     spacing: 6
 
-                                                    RowLayout {
+                                                    // Flow：窗口变窄时开关和按钮自动折到下一行
+                                                    Flow {
                                                         Layout.fillWidth: true
                                                         spacing: 8
                                                         Text {
                                                             typography: Typography.BodyStrong
                                                             text: "规则集 " + (rsRow.idx + 1)
+                                                            height: 32
+                                                            verticalAlignment: Text.AlignVCenter
                                                         }
                                                         Switch {
                                                             id: rsEnabled
@@ -3213,7 +3497,7 @@ PluginPage {
                                                         }
                                                         ComboBox {
                                                             id: rsModeC
-                                                            Layout.preferredWidth: 120
+                                                            width: 120
                                                             model: ["全部满足", "任一满足"]
                                                             onActivated: { var o = rsRow.rsArr(); if (o) o.mode = (index === 1 ? "any" : "all") }
                                                         }
@@ -3222,7 +3506,6 @@ PluginPage {
                                                             text: "取反"
                                                             onToggled: { var o = rsRow.rsArr(); if (o) o.reversed = checked }
                                                         }
-                                                        Item { Layout.fillWidth: true }
                                                         Button {
                                                             text: "移除该规则集"
                                                             implicitHeight: 30
@@ -3233,7 +3516,7 @@ PluginPage {
 
                                                     Repeater {
                                                         model: rsRow.rowCount
-                                                        delegate: RowLayout {
+                                                        delegate: ColumnLayout {
                                                             id: ruleRow
                                                             Layout.fillWidth: true
                                                             spacing: 6
@@ -3259,16 +3542,29 @@ PluginPage {
                                                             }
                                                             // 同样：构造期不动数据，等 ruleVersion 变更。
 
-                                                            ComboBox {
-                                                                id: ruleType
-                                                                Layout.preferredWidth: 170
-                                                                model: page.ruleLabels
-                                                                onActivated: {
-                                                                    var o = rsRow.rsArr(); if (!o) return
-                                                                    if (!o.rules) o.rules = []
-                                                                    o.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
-                                                                    ruleRow.obj = o.rules[ruleRow.idx]
-                                                                    revSw.checked = false
+                                                            RowLayout {
+                                                                Layout.fillWidth: true
+                                                                spacing: 6
+                                                                ComboBox {
+                                                                    id: ruleType
+                                                                    Layout.fillWidth: true
+                                                                    Layout.preferredWidth: 170
+                                                                    Layout.minimumWidth: 110
+                                                                    Layout.maximumWidth: 280
+                                                                    model: page.ruleLabels
+                                                                    onActivated: {
+                                                                        var o = rsRow.rsArr(); if (!o) return
+                                                                        if (!o.rules) o.rules = []
+                                                                        o.rules[ruleRow.idx] = {"type": page.ruleTypes[index], "p1": "", "p2": "", "p3": "", "p4": "", "reversed": false}
+                                                                        ruleRow.obj = o.rules[ruleRow.idx]
+                                                                        revSw.checked = false
+                                                                    }
+                                                                }
+                                                                Item { Layout.fillWidth: true }
+                                                                Switch {
+                                                                    id: revSw
+                                                                    text: "取反"
+                                                                    onToggled: if (obj) obj.reversed = checked
                                                                 }
                                                             }
                                                             Loader {
@@ -3276,11 +3572,6 @@ PluginPage {
                                                                 Layout.fillWidth: true
                                                                 sourceComponent: page.ruleFieldComp(ruleRow.obj ? ruleRow.obj.type : "")
                                                                 onLoaded: ruleRow.refreshFields()
-                                                            }
-                                                            Switch {
-                                                                id: revSw
-                                                                text: "取反"
-                                                                onToggled: if (obj) obj.reversed = checked
                                                             }
                                                             Button {
                                                                 text: "移除"
@@ -3321,7 +3612,7 @@ PluginPage {
                                         spacing: 6
                                         Repeater {
                                             model: page.actCount
-                                            delegate: RowLayout {
+                                            delegate: ColumnLayout {
                                                 id: actRow
                                                 Layout.fillWidth: true
                                                 spacing: 6
@@ -3345,15 +3636,26 @@ PluginPage {
                                                 // 那次延后的版本号变更（onVerChanged）驱动，
                                                 // 保证发生在 delegate 建好之后。
 
-                                                ComboBox {
-                                                    id: actType
-                                                    Layout.preferredWidth: 170
-                                                    model: page.actLabels
-                                                    onActivated: {
-                                                        var r = page.cur(); if (!r || !r.actions) return
-                                                        r.actions[actRow.idx] = {"type": page.actTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
-                                                        actRow.obj = r.actions[actRow.idx]
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 6
+                                                    ComboBox {
+                                                        id: actType
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredWidth: 170
+                                                        Layout.minimumWidth: 110
+                                                        Layout.maximumWidth: 280
+                                                        model: page.actLabels
+                                                        onActivated: {
+                                                            var r = page.cur(); if (!r || !r.actions) return
+                                                            r.actions[actRow.idx] = {"type": page.actTypes[index], "p1": "", "p2": "", "p3": "", "p4": ""}
+                                                            actRow.obj = r.actions[actRow.idx]
+                                                        }
                                                     }
+                                                    Item { Layout.fillWidth: true }
+                                                    Button { text: "↑"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, -1) }
+                                                    Button { text: "↓"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, 1) }
+                                                    Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeAction(actRow.idx) }
                                                 }
                                                 Loader {
                                                     id: actFld
@@ -3361,9 +3663,6 @@ PluginPage {
                                                     sourceComponent: page.actFieldComp(actRow.obj ? actRow.obj.type : "")
                                                     onLoaded: actRow.refreshFields()
                                                 }
-                                                Button { text: "↑"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, -1) }
-                                                Button { text: "↓"; implicitWidth: 30; implicitHeight: 30; onClicked: page.moveAction(actRow.idx, 1) }
-                                                Button { text: "移除"; implicitWidth: 52; implicitHeight: 30; onClicked: page.removeAction(actRow.idx) }
                                             }
                                         }
                                         Button { text: "+ 添加行动"; onClicked: page.addAction() }

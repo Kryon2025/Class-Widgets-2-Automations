@@ -1,23 +1,33 @@
 <div align="center">
 
 <img src="icon.png" height="120" alt="Kryon的自动化">
-<h1>Kryon 自动化</h1>
+<h1>Kryon的自动化 <sub>Automations</sub></h1>
 
-<p>为 Class Widgets 2 提供自动化能力，注册为官方 <code>AutomationTask</code>，随主程序每秒调度，无需自建后台线程。（此插件由Deepseek V4 Flash开发）</p>
+<p>为 Class Widgets 2 提供自动化能力，注册为官方 <code>AutomationTask</code>，随主程序每秒调度，无需自建后台线程。</p>
 
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-2.0.7-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
-[![星标](https://img.shields.io/github/stars/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&color=orange&label=%E6%98%9F%E6%A0%87)](https://github.com/Kryon2025/Class-Widgets-2-Automations)
+<p>原作者 <b>Kryon</b>；<b>orange838</b> 在此基础上加了滚动文字（全屏 / 顶部横幅）、给其它插件用的远程横幅接口、上课与活动期间禁止推送等能力。<b>3.0.x 的「更好的自动化」已合并回本条线</b>，插件 ID 统一为 <code>com.kryon.automations</code>，原有规则自动迁移。</p>
+
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-3.1.0-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
 [![开源许可](https://img.shields.io/github/license/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/LICENSE)
-[![下载量](https://img.shields.io/github/downloads/Kryon2025/Class-Widgets-2-Automations/total.svg?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=green&style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
+
+<p>发布仓库：[Kryon2025/Class-Widgets-2-Automations](https://github.com/Kryon2025/Class-Widgets-2-Automations) · 开发仓库：[orange838/better-automations](https://github.com/orange838/better-automations) · 协议 MIT</p>
 
 </div>
 
 > [!NOTE]
-> 当前版本 **2.0.7**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
-> 在 [插件广场](https://plaza.cw.rinlit.cn/plugins/com.kryon.automations) 可以一键安装/更新，也可以在 Release 页下载 `.cwplugin` 手动导入。
+> 当前版本 **3.1.0**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
+> 
+> **从 3.0.x「更好的自动化」迁移**：首次启动时会自动把 `org.cslblog.betterautomations.json` 复制过来，**原有规则不用重新配置**。
+> 迁移完成后请**停用或卸载**「更好的自动化」——两套引擎同时启用的话，同一条规则会被触发两次。
 
 ## 功能特性
 
+### 2.1.0 相比上游新增
+
+- **上课/下课触发可限定科目**（2.1.0 新增）：「上课时」「下课时」两个触发器的字段里多了科目下拉，选中后只有该科目的课才触发；留「任意课」则每节都触发。
+- **「课程展示模式」行动**（2.1.0 新增）：可切换白板模式 / 息屏模式 / 退出特殊模式，联动「全量展示课程」插件（com.yersmagit.lessonsdisplayer）；插件不在场时只记一条警告，不影响其他行动。
+
+### 原有功能（继承自 Kryon 自动化 2.0.7，未删改）
 - **触发器 + 规则集 + 行动**三段式自动化：触发器触发 → 规则集过滤 → 依次执行行动。
 - **自动恢复**：开启「恢复」后，逆事件（如下课）或规则集不再满足时，自动还原被修改的配置。
 - **类型专属编辑**：每种触发器/规则/行动选中后只显示自己需要的字段——下拉、开关、数字、时间、文本，无需手填参数。
@@ -42,7 +52,7 @@
 |---|---|
 | 定时 | 指定 HH:MM + 星期（留空=每天） |
 | 间隔触发 | 每 N 秒一次 |
-| 上课时 / 下课时 / 课间休息时 / 放学时 | 课表状态事件（放学时见下方说明） |
+| 上课时 / 下课时 / 课间休息时 / 放学时 | 课表状态事件；**上课/下课可限定科目**（2.1.0 新增，见下）。（放学时见下方说明） |
 | 时间状态变化时 | 任何状态切换 |
 | 上课前 N 秒 | 下一节开始前触发 |
 | 应用启动时 | 主程序启动后 |
@@ -93,10 +103,25 @@
 | 媒体控制 | 下拉 | 播放 / 暂停 / 上一首 / 下一首 |
 | 发系统通知 | 文本 + 文本 | 标题 + 正文，走系统通知 |
 | 触发随机点名 | 数字 | 点名 N 人（需点名插件 + 扩展开关） |
+| **课程展示模式**（2.1.0 新增） | 下拉 | 切换「全量展示课程」插件的特殊模式：白板模式（白底全屏）/ 息屏模式（黑底全屏）/ 退出特殊模式；该插件不在场时只记一条警告 |
 | 设置随机点名 | 下拉 + 值控件 | 修改点名插件的配置项 |
 | 关闭点名窗口 | — | 关闭点名插件的窗口 |
+| 全屏播放文字 | 文本 + 数字 + 3 个下拉 | 要显示的文字 / 停留秒数 / 速度（慢·正常·快）/ 字号（小·中·大）/ 显示方式（全屏·顶部横幅） |
 
 「设置配置项」支持的 20 项配置键：迷你模式、光影效果、隐藏小组件、课堂中隐藏、最大化时隐藏、全屏时隐藏、悬停淡出、通知开关、主题、停靠位置、层级、倒计时精度、隐藏行为、点击行为、组件方案、不透明度、通知音量、缩放、水平偏移、垂直偏移。
+
+## 播放文字（全屏 / 顶部横幅）
+
+- 行动「全屏播放文字」可以往屏幕上抹一段大字：`全屏` 是纯黑铺满整屏，`顶部横幅` 只在屏幕上方拉一条黑条，
+  高度随字号自适应（字越大条越高），离屏幕顶端留一点空，下面的桌面和窗口照常能看能用（适合当通知条）。
+- 文字宽度超过屏幕会从右往左滚动；没超屏就居中静止。停留秒数填 0 = 一直显示（滚动的会一直循环），要关只能手动退出。
+- 播放窗口不会出现在任务栏和 Alt+Tab 里，只盖在屏幕上。
+- 播放时**右键**（触摸屏**长按 0.7 秒**）弹出菜单：**编辑文本**（带着当前文字、时长、速度、字号、显示方式回到输入界面）/ **退出**。
+  按 `Esc` 也可以直接关掉。
+- 设置页右上角还有「播放文字」按钮，可以直接打开同一个输入界面手动播一段，不用建自动化。
+- 别的插件也可以推横幅：调用 `playBanner(文字, 秒数)`（只走顶部横幅）。
+  **上课 / 活动期间一律拒绝**，已有的远程横幅会在上课铃响时自动撤掉；
+  `bannerBlockReason()` 返回空串表示现在能推，否则是拒绝原因。
 
 ## 界面
 
@@ -151,17 +176,42 @@
 7. **放学自动打开浏览器**：触发器「放学时」→ 行动「打开应用」→ 下拉选 Chrome，启动参数填 `--new-window`。
 8. **放学后放歌**：触发器「放学时」→ 行动「打开应用」→ 选你的播放器（UWP 应用也在下拉列表里）。
 
+9. **仅数学课进白板模式**：触发器「上课时」（科目选「数学」，不用再配规则集）→ 行动「课程展示模式 → 白板模式」，并打开「恢复」开关——下课时自动执行逆行动（退出特殊模式）。
+10. **自习课自动息屏**：触发器「上课时」（科目选「自习」）→ 行动「课程展示模式 → 息屏模式」。
+11. **考试时提醒安静**：触发器「上课时」+ 规则集「当前科目是 = 考试」→ 行动「全屏播放文字」填「考试中，请保持安静」，显示方式选「顶部横幅」。
+
 ## 安装与存储
 
-1. 安装 `com.kryon.automations.cwplugin`，重启主程序。
+1. 安装 `org.cslblog.betterautomations.cwplugin`，重启主程序。
 2. 打开「设置 → 自动化」：点「新建自动化」建规则，卡片列表会列出所有自动化；编辑页里「测试执行」可立即试跑，保存后立即生效。
 3. 规则与标志由主程序的 **ConfigAPI** 托管（`register_plugin_model`），改动即时保存；
-   只有在拿不到官方配置接口（较老宿主）时，才回退到 `configs/plugins/com.kryon.automations.json` 保底。
-   从旧版本升级时，首次加载会自动把旧 JSON 迁移进新配置，原有规则不丢。
+   只有在拿不到官方配置接口（较老宿主）时，才回退到 `configs/plugins/org.cslblog.betterautomations.json` 保底。
+   **从旧插件「Kryon自动化」迁移**：首次启动时若本插件还没有规则文件，而 `configs/plugins/com.kryon.automations.json` 存在，
+   会自动把它复制为本插件的规则文件，原有规则不丢。迁移后请停用或卸载旧插件，避免两套引擎重复触发。
 
 ## 更新日志
 
 见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 3.0.x 线带来的改动
+
+3.0.x 曾以「更好的自动化」（`org.cslblog.betterautomations`）单独发过版，v3.1.0 起合并回本条线，全部功能保留：
+
+| 位置 | 改动 |
+|---|---|
+| `scroll_text.py` | ① 播放文字支持「全屏 / 顶部横幅」两种模式，横幅按字号自适应、屏幕顶部留白 ② 时长到点也等整段文字滚出屏幕再关，填 0 则一直循环 ③ 播放窗口不进任务栏、不出现在 Alt+Tab ④ 编辑窗控件改实色，修鼠标悬停黑白闪 ⑤ `playBanner()` / `close_external_banner()` 给其它插件用 |
+| `automations.py` | ① `fire()` 对上课/下课触发器按 `p1` 科目过滤（`_trigger_subject()`，下课时回退上一科）② 新增 `lesson_mode` 行动分发与 `_do_lesson_mode()` ③ 上课 / 活动期间拒绝远程横幅，上课铃响撤掉已显示的远程横幅 ④ 规则加载时自动迁移 3.0.x 的配置 |
+| `qml/settings.qml` | ① 上课/下课触发器显示科目下拉（`trigSubjectComp`）② `lesson_mode` 行动编辑器（`actLessonModeComp`）③ 播放文字增加「显示」下拉（全屏 / 顶部横幅） |
+| `main.py` / `app_index.py` | 播放文字入口、`playBanner` / `bannerBlockReason` 槽、缓存文件名 |
+
+协议沿用 MIT License，原作者是 [Kryon2025](https://github.com/Kryon2025)。
+
+## 维护者
+
+- **Kryon** — 原作者，发布与广场条目（`com.kryon.automations`）维护
+- **orange838** — 3.0.x 功能开发，改动通过 PR 合入本仓库
+
+两边都保留完整仓库和 CI；任何一方停止维护时，另一方可以直接接手发版。
 
 ## 已知问题
 
