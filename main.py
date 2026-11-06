@@ -63,6 +63,7 @@ class Plugin(CW2Plugin):
         self._task: RuleEngineTask | None = None
         self._debugger = None
         self._widget_backend: AutomationsWidgetBackend | None = None
+        self._quick_manager = None          # 快捷面板「快捷管理自动化」小窗
         self._old_plugin_on = False      # 旧的「Kryon的自动化」是否仍在启用
 
     def on_load(self):
@@ -148,6 +149,18 @@ class Plugin(CW2Plugin):
         except Exception as e:
             logger.warning("[automations] 注册小组件失败: {}", e)
 
+        # 快捷面板（托盘面板）里的「快捷管理自动化」
+        try:
+            self.api.ui.register_shortcut(
+                "quick_manage",
+                "快捷管理自动化",
+                "icon.png",
+                self.openQuickManager,
+            )
+            logger.info("[automations] 快捷面板条目已注册")
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 注册快捷面板条目失败: {}", e)
+
         if self._engine is not None:
             try:
                 self._engine.app_started()
@@ -175,6 +188,13 @@ class Plugin(CW2Plugin):
             except Exception:
                 pass
             self._debugger = None
+        if self._quick_manager is not None:
+            try:
+                self._quick_manager.close()
+                self._quick_manager.deleteLater()
+            except Exception:
+                pass
+            self._quick_manager = None
         logger.info("[automations] 插件已卸载")
 
     # ── 设置页槽 ─────────────────────────────────────────────
@@ -400,6 +420,22 @@ class Plugin(CW2Plugin):
         if self._engine is None:
             return False
         return self._engine.fire_now(index)
+
+    # ── 快捷面板：快捷管理自动化 ────────────────────────────
+
+    @Slot()
+    def openQuickManager(self) -> None:
+        """打开「快捷管理自动化」小窗（快捷面板条目触发）。"""
+        try:
+            if self._quick_manager is None:
+                from quick_manager import QuickRuleManager
+                self._quick_manager = QuickRuleManager(self)
+            self._quick_manager.reload()
+            self._quick_manager.show()
+            self._quick_manager.raise_()
+            self._quick_manager.activateWindow()
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 打开「快捷管理自动化」失败: {}", e)
 
     @Slot(result=bool)
     def reloadRules(self) -> bool:

@@ -21,13 +21,15 @@ RowLayout {
 
     property var it: null
     property bool loading: false
+    // 写入触发器的哪个字段：定时用 p2，时间段触发器用 p3
+    property string field: "p2"
 
     readonly property var dayNames: ["一", "二", "三", "四", "五", "六", "日"]
 
     function load(item) {
         it = item
         loading = true
-        var spec = String((item && item.p2) || "").trim()
+        var spec = String((item && item[weekRoot.field]) || "").trim()
         var picked = spec ? spec.split(/[,，、\s]+/) : []
         for (var i = 0; i < 7; i++) {
             var rb = weekRep.itemAt(i)
@@ -43,9 +45,9 @@ RowLayout {
             var rb = weekRep.itemAt(i)
             if (rb && rb.checked) picked.push(String(i + 1))
         }
-        if (picked.length === 7) it.p2 = ""            // 全选 = 每天
-        else if (picked.length === 0) it.p2 = "0"      // 全不选 = 不触发
-        else it.p2 = picked.join(",")
+        if (picked.length === 7) it[weekRoot.field] = ""            // 全选 = 每天
+        else if (picked.length === 0) it[weekRoot.field] = "0"      // 全不选 = 不触发
+        else it[weekRoot.field] = picked.join(",")
     }
 
     Repeater {

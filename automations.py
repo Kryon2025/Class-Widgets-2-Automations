@@ -49,12 +49,16 @@ T_ALARM = "alarm"               # 闹钟（到点自己响铃）
 T_SYS_CHANGE = "sys_change"       # 系统设置变化时（p1 键，p2 可选「变为」）
 T_BOOT = "boot"                   # 开机后（p1 = 开机多少秒内算"刚开机"，默认 120）
 T_NOTIF = "notif_new"             # 收到系统通知时（p1 应用名含，p2 内容含，均可空）
+# 长时间未触碰电脑（p1 = 秒）；时间段内（p1 开始 HH:MM[:SS]，p2 结束，p3 星期，p4 跳过非上课日）
+T_IDLE_TRIG = "idle"
+T_TIME_RANGE = "time_range"
 # 随机点名联动（扩展功能，需 com.rollcall 插件）：开始滚动 / 出结果后
 T_ROLLCALL_START = "rollcall_start"
 T_ROLLCALL_PICKED = "rollcall_picked"
 TRIGGER_TYPES = (T_ALARM, T_TIME, T_INTERVAL, T_CLASS_START, T_CLASS_END, T_BREAK_START,
                  T_AFTER_SCHOOL, T_STATUS_CHANGE, T_BEFORE_CLASS, T_APP_START, T_SIGNAL,
-                 T_SYS_CHANGE, T_BOOT, T_NOTIF, T_ROLLCALL_START, T_ROLLCALL_PICKED)
+                 T_SYS_CHANGE, T_BOOT, T_NOTIF, T_IDLE_TRIG, T_TIME_RANGE,
+                 T_ROLLCALL_START, T_ROLLCALL_PICKED)
 
 # 触发器逆事件（用于恢复）
 TRIGGER_INVERSE = {
@@ -81,16 +85,18 @@ R_NEXT_TEACHER = "next_teacher"        # 下节课教师是
 R_SYS_SETTING = "sys_setting"          # 系统设置：主题/电源/电池/网络（p1 键 p2 比较 p3 值）
 R_MEDIA = "media"                      # 媒体状态：是否在播/曲名/歌手（p1 键 p2 比较 p3 值）
 R_NOTIF = "notif"                      # 系统通知：最近是否收到匹配的通知（p1 键 p2 比较 p3 值 p4 秒）
+R_TIME_BETWEEN = "time_between"        # 时间在…与…之间（p1 开始 p2 结束，可跨零点）
 # 随机点名：读它的配置项做判断（p1 = 配置项键，p2 = 期望值）
 R_ROLLCALL_CONFIG = "rollcall_config"
 RULE_TYPES = (R_ALWAYS_TRUE, R_ALWAYS_FALSE, R_TODAY_IS, R_LATER_THAN, R_EARLIER_THAN,
               R_IDLE, R_CURRENT_SUBJECT, R_NEXT_SUBJECT, R_PREV_SUBJECT, R_CURRENT_STATUS,
               R_FOREGROUND_WINDOW, R_FLAG_IS, R_CURRENT_TEACHER, R_NEXT_TEACHER,
-              R_SYS_SETTING, R_MEDIA, R_NOTIF, R_ROLLCALL_CONFIG)
+              R_SYS_SETTING, R_MEDIA, R_NOTIF, R_TIME_BETWEEN, R_ROLLCALL_CONFIG)
 
 # ── 行动类型（顺序 = QML 下拉顺序）────────────────────────────
 A_RUN = "run"                     # 运行命令/程序/网址
 A_NOTIFY = "notify"               # 自动化提醒
+A_COUNTDOWN = "countdown"         # 倒计时提醒：p1 标题 p2 正文 p3 秒数 p4 级别 p5 恢复显示
 A_WAIT = "wait"                   # 等待
 A_BROADCAST = "broadcast"         # 广播信号
 A_SET_FLAG = "set_flag"           # 设标志
@@ -120,7 +126,7 @@ ROLLCALL_PLUGIN_ID = "com.rollcall"
 # 全量展示课程插件的 id
 LESSONSDISPLAYER_PLUGIN_ID = "com.yersmagit.lessonsdisplayer"
 
-ACTION_TYPES = (A_RUN, A_APP, A_NOTIFY, A_WAIT, A_BROADCAST, A_SET_FLAG,
+ACTION_TYPES = (A_RUN, A_APP, A_NOTIFY, A_COUNTDOWN, A_WAIT, A_BROADCAST, A_SET_FLAG,
                 A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
                 A_POWER, A_VOLUME, A_MEDIA, A_SYS_NOTIFY,
                 A_ROLLCALL_ROLL, A_ROLLCALL_SET, A_ROLLCALL_CLOSE,
@@ -244,6 +250,12 @@ class RuleEngine(QObject):
         self._saved_sig: Optional[str] = None
         self._save_pending = False
         self._save_queued = False
+        # 通知「隐藏时恢复显示」：用截止时间记账，可能同时有多条通知要播
+        self._reveal_until = 0.0
+        self._reveal_active = False
+        self._reveal_timer = None
+        # 倒计时提醒的序号：新的一条顶掉上一条的刷新
+        self._cd_seq = 0
 
         self._tick_timer = QTimer(self)   # 兜底 tick（若未注册官方任务）
         self._tick_timer.setInterval(1000)
@@ -852,6 +864,37 @@ class RuleEngine(QObject):
                 trig["_lt"] = now.timestamp()
                 return True
             return False
+        if t == T_IDLE_TRIG:
+            # 长时间未触碰电脑：跨过阈值时触发一次，键鼠一动就复位，避免每秒重复触发
+            try:
+                need = max(1.0, float(str(trig.get("p1") or "300").strip()))
+            except (TypeError, ValueError):
+                need = 300.0
+            idle = self._idle_seconds()
+            if idle < 0:
+                return False
+            if idle >= need:
+                if not trig.get("_idle_hit"):
+                    trig["_idle_hit"] = True
+                    return True
+            else:
+                trig["_idle_hit"] = False
+            return False
+        if t == T_TIME_RANGE:
+            # 时间段内：进入范围时触发一次；开「恢复」时由 _revert_scan 在离开范围时还原
+            if not self._range_inside(trig, now):
+                trig.pop("_fp", None)
+                return False
+            days = str(trig.get("p3") or "").strip()
+            if days and str(now.isoweekday()) not in re.split(r"[,，、\s]+", days):
+                return False
+            if trig.get("p4") == "1" and not self._has_class_today():
+                return False
+            fp = f"{now.strftime('%Y%m%d')}-{trig.get('p1')}-{trig.get('p2')}"
+            if trig.get("_fp") == fp:
+                return False
+            trig["_fp"] = fp
+            return True
         if t == T_BEFORE_CLASS:
             secs = max(0, int(float(trig.get("p1") or 30)))
             nxt = self._next_entry()
@@ -1120,12 +1163,16 @@ class RuleEngine(QObject):
                 win_settings.volume_action(str(action.get("p1") or ""),
                                            str(action.get("p2") or ""))
             elif atype == A_MEDIA:
-                media.action(str(action.get("p1") or ""))
+                self._do_media(action)
             elif atype == A_SYS_NOTIFY:
                 # 纯系统通知：直接走 Windows toast，不经过灵动通知。
                 # （provider 的 use_system_notify 已关掉，那里不该再镜像）
                 notify.send(str(action.get("p1") or "自动化提醒"),
                             str(action.get("p2") or ""))
+            elif atype == A_COUNTDOWN:
+                self._do_countdown(action)
+                # 倒计时期间不算完：下一步等倒计时结束再走
+                wait_ms = max(1, int(float(action.get("p3") or 60))) * 1000
             elif atype == A_NOTIFY:
                 self._do_notify(action)
                 # p5：「显示完后执行下一步」。开 → 下一步等通知播完再走；
@@ -1221,6 +1268,68 @@ class RuleEngine(QObject):
         self._provider = provider
         self._notify_unregistered_warned = False
 
+    MEDIA_RETRY_TIMES = 20         # 最长等 10 秒
+    MEDIA_RETRY_INTERVAL = 500     # 每 0.5 秒重试一次
+
+    def _do_media(self, a: dict) -> None:
+        """媒体控制：刚被拉起的播放器还没注册 SMTC 会话，等一会儿再重试。"""
+        cmd = str(a.get("p1") or "").strip()
+        if not cmd:
+            return
+        if media.action(cmd):
+            return
+        state = {"n": 0}
+
+        def tick() -> None:
+            state["n"] += 1
+            if media.action(cmd):
+                logger.info("[automations] 媒体控制：等了约 {} 秒才拿到会话，已执行 {}",
+                            round(state["n"] * self.MEDIA_RETRY_INTERVAL / 1000, 1), cmd)
+                return
+            if state["n"] < self.MEDIA_RETRY_TIMES:
+                QTimer.singleShot(self.MEDIA_RETRY_INTERVAL, tick)
+            else:
+                logger.warning("[automations] 媒体控制：等了 {} 秒仍没有可控的媒体会话（{}），已放弃",
+                               round(self.MEDIA_RETRY_TIMES * self.MEDIA_RETRY_INTERVAL / 1000, 1), cmd)
+
+        logger.info("[automations] 媒体控制：暂无会话，开始等待（{}）", cmd)
+        QTimer.singleShot(self.MEDIA_RETRY_INTERVAL, tick)
+
+    def _do_countdown(self, a: dict) -> None:
+        """倒计时提醒：每秒刷新「还剩 N 秒」，倒计时结束后才执行下一步。"""
+        if self._provider is None:
+            if not self._notify_unregistered_warned:
+                self._notify_unregistered_warned = True
+                logger.warning("[automations] 通知 provider 未注册，已跳过倒计时提醒")
+            return
+        try:
+            title = str(a.get("p1") or "倒计时提醒")
+            message = str(a.get("p2") or "")
+            total = max(1, int(float(a.get("p3") or 60)))
+            level = max(0, min(3, int(float(a.get("p4") or 0))))
+            reveal = str(a.get("p5") or "") == "1"
+            if reveal:
+                self._ensure_reveal(total * 1000 + 800)
+            self._cd_seq = getattr(self, "_cd_seq", 0) + 1
+            seq = self._cd_seq
+            logger.info("[automations] 倒计时提醒: {} 秒, 级别 {}", total, level)
+            self._push_notify("%s（还剩 %d 秒）" % (title, total), message, 1100, level)
+
+            def tick(left: int) -> None:
+                if getattr(self, "_cd_seq", 0) != seq or left <= 0:
+                    return
+                try:
+                    self._push_notify("%s（还剩 %d 秒）" % (title, left), message, 1100, level)
+                except Exception as e:                   # noqa: BLE001
+                    logger.debug("[automations] 倒计时刷新失败: {}", e)
+                    return
+                QTimer.singleShot(1000, lambda: tick(left - 1))
+
+            if total > 1:
+                QTimer.singleShot(1000, lambda: tick(total - 1))
+        except Exception as e:                           # noqa: BLE001
+            logger.warning("[automations] 倒计时提醒失败: {}", e)
+
     def _do_notify(self, a: dict) -> None:
         """弹一条灵动通知（用 on_load 注册好的 provider，不再现场注册）。
 
@@ -1248,19 +1357,11 @@ class RuleEngine(QObject):
                         title[:30], a.get("p3"), a.get("p4"), a.get("p5"), a.get("p6"))
 
             # p6：小组件层隐藏时临时恢复显示，让通知有落脚点
-            revealed = False
+            # （可能同时有多条通知，所以用「保持到某个时刻」的方式记账）
             if str(a.get("p6") or "") == "1":
-                revealed = self._reveal_widget_layer()
+                self._ensure_reveal(duration + 400)
 
             self._push_notify(title, message, duration, level)
-
-            # 倒计时（乙方案）已停用：宿主只提供 push()、没有「就地改文字」的接口，
-            # 靠每秒重发去刷数字会把标题覆盖成「标题（还剩 N 秒）」，
-            # 且每次重发都用递减的 duration 重新计时，表现为「标题丢失 + 几秒就消失」。
-            # 若要恢复，务必先确认宿主的 push 是「同 provider 覆盖」而非「排队累加」。
-            if revealed:
-                # 多留 400ms，等通知收起动画走完再还原（与 rollcall 一致）
-                QTimer.singleShot(duration + 400, self._restore_widget_layer)
         except Exception as e:
             logger.warning("[automations] 通知失败: {}", e)
 
@@ -1367,24 +1468,49 @@ class RuleEngine(QObject):
             logger.debug("[automations] globalconfig.{} 失败: {}", 
                          "lock" if on else "unlock", e)
 
-    def _reveal_widget_layer(self) -> bool:
-        """小组件层隐藏时临时恢复显示，返回是否是我们动过它。"""
-        if self._widget_layer_hidden() is not True:
-            return False
-        # 官方姿势：先接管该配置键，避免宿主中途把它覆盖回去
+    def _ensure_reveal(self, hold_ms: int) -> None:
+        """确保小组件层在这段时间内保持显示，给灵动通知当落脚点。
+
+        可能同时有多条通知在播，所以用「保持到某个时刻」记账：
+        每次都把截止时间往后延，只跑一个 1 秒的巡检定时器。
+        """
+        until = datetime.datetime.now().timestamp() + max(0, hold_ms) / 1000.0
+        if until > getattr(self, "_reveal_until", 0.0):
+            self._reveal_until = until
+        if getattr(self, "_reveal_active", False):
+            if self._widget_layer_hidden() is True:
+                self._set_widget_layer_hidden(False)
+            return
+        self._reveal_active = True
         self._hidden_lock(True)
-        if not self._set_widget_layer_hidden(False):
-            self._hidden_lock(False)
-            return False
-        self._layer_restored = True
+        self._set_widget_layer_hidden(False)
+        timer = getattr(self, "_reveal_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setInterval(1000)
+            timer.timeout.connect(self._reveal_tick)
+            self._reveal_timer = timer
+        timer.start()
         logger.info("[automations] 小组件层原是隐藏的，已临时恢复显示供灵动通知落脚")
-        return True
+
+    def _reveal_tick(self) -> None:
+        """通知播放期间：又被藏起来就再放出来；到点后还原并解锁。"""
+        if not getattr(self, "_reveal_active", False):
+            return
+        if datetime.datetime.now().timestamp() >= getattr(self, "_reveal_until", 0.0):
+            self._restore_widget_layer()
+            return
+        if self._widget_layer_hidden() is True:
+            self._set_widget_layer_hidden(False)
 
     def _restore_widget_layer(self) -> None:
-        """播完把小组件层还原成原先的隐藏状态。"""
-        if not getattr(self, "_layer_restored", False):
+        if not getattr(self, "_reveal_active", False):
             return
-        self._layer_restored = False
+        self._reveal_active = False
+        self._reveal_until = 0.0
+        timer = getattr(self, "_reveal_timer", None)
+        if timer is not None:
+            timer.stop()
         if self._widget_layer_hidden() is False:
             self._set_widget_layer_hidden(True)
             logger.info("[automations] 已还原小组件层的隐藏状态")
@@ -1520,9 +1646,18 @@ class RuleEngine(QObject):
     # ── 恢复 ────────────────────────────────────────────────
 
     def _revert_scan(self) -> None:
+        now = datetime.datetime.now()
         for uid, rec in list(self._active.items()):
             rule = rec["rule"]
-            if rule.get("revert") and self._evaluate_ruleset(rule) is False:
+            if not rule.get("revert"):
+                continue
+            ranges = [t for t in (rule.get("triggers") or [])
+                      if t.get("type") == T_TIME_RANGE]
+            if ranges and not any(self._range_inside(t, now) for t in ranges):
+                # 时间段触发器：离开时间段就当作逆事件，自动恢复
+                self._revert(uid)
+                continue
+            if self._evaluate_ruleset(rule) is False:
                 self._revert(uid)
 
     def _revert(self, uid: str) -> None:
@@ -1788,6 +1923,8 @@ class RuleEngine(QObject):
                 v = media.rule_match(p1, p2, p3)
             elif t == R_NOTIF:
                 v = notify.rule_match(p1, p2, p3, str(r.get("p4") or "60"))
+            elif t == R_TIME_BETWEEN:
+                v = self._time_between(p1, p2)
             elif t == R_ROLLCALL_CONFIG:
                 v = self._rollcall_cfg_is(p1, p2)
             else:
@@ -1818,6 +1955,30 @@ class RuleEngine(QObject):
         if h > 23 or mi > 59 or s > 59:
             return None
         return datetime.time(h, mi, s)
+
+    @classmethod
+    def _range_inside(cls, trig: dict, now: datetime.datetime) -> bool:
+        """当前时刻是否落在触发器的时间段里（支持跨零点，如 23:00~01:00）。"""
+        start = cls._parse_hms(str(trig.get("p1") or ""))
+        end = cls._parse_hms(str(trig.get("p2") or ""))
+        if start is None or end is None:
+            return False
+        cur = now.time()
+        if start <= end:
+            return start <= cur <= end
+        return cur >= start or cur <= end
+
+    @classmethod
+    def _time_between(cls, p1: str, p2: str) -> bool:
+        """「时间在…与…之间」判定（两端都含，支持跨零点）。"""
+        start = cls._parse_hms(p1)
+        end = cls._parse_hms(p2)
+        if start is None or end is None:
+            return False
+        cur = datetime.datetime.now().time()
+        if start <= end:
+            return start <= cur <= end
+        return cur >= start or cur <= end
 
     @classmethod
     def _later_than(cls, p1: str) -> bool:
@@ -2019,6 +2180,12 @@ class RuleEngine(QObject):
         try:
             self._tick_timer.stop()
         except Exception:
+            pass
+        # 退出前把「临时恢复显示」收尾，别把锁留在宿主里
+        try:
+            if getattr(self, "_reveal_active", False):
+                self._restore_widget_layer()
+        except Exception:                                # noqa: BLE001
             pass
         # 退出前把还没合并的改动落盘，别丢「自动停用」「设标志」这类结果
         try:

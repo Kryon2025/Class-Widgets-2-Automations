@@ -52,14 +52,16 @@ PluginPage {
 
     readonly property var trigTypes: {
         var a = ["time", "interval", "class_start", "class_end", "break_start",
-            "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot"]
+            "after_school", "status_change", "before_class", "app_start", "signal", "alarm", "sys_change", "boot",
+            "idle", "time_range"]
         if (page.sysNotifyExt) a = a.concat(["notif_new"])
         if (page.rollcallExt) a = a.concat(["rollcall_start", "rollcall_picked"])
         return a
     }
     readonly property var trigLabels: {
         var a = ["定时", "间隔触发", "上课时", "下课时", "课间休息时",
-            "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后"]
+            "放学时", "时间状态变化时", "上课前", "应用启动时", "收到信号", "闹钟", "系统设置变化时", "开机后",
+            "长时间未触碰电脑", "时间段内"]
         if (page.sysNotifyExt) a = a.concat(["收到系统通知时"])
         if (page.rollcallExt) a = a.concat(["随机点名开始", "随机点名出结果后"])
         return a
@@ -68,7 +70,8 @@ PluginPage {
     readonly property var ruleTypes: {
         var a = ["always_true", "always_false", "today_is", "later_than", "earlier_than", "idle",
             "current_subject", "next_subject", "prev_subject", "current_status",
-            "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media"]
+            "foreground_window", "flag_is", "current_teacher", "next_teacher", "sys_setting", "media",
+            "time_between"]
         if (page.sysNotifyExt) a = a.concat(["notif"])
         if (page.rollcallExt) a = a.concat(["rollcall_config"])
         return a
@@ -98,7 +101,7 @@ PluginPage {
     readonly property var ruleLabels: {
         var a = ["总是为真", "总是为假", "今天是…", "时间晚于…", "时间早于…", "电脑空闲…",
             "当前科目是", "下节课科目是", "上节课科目是", "当前时间状态是", "前台窗口…", "读标志…",
-            "当前教师是", "下节课教师是", "系统设置…", "媒体状态"]
+            "当前教师是", "下节课教师是", "系统设置…", "媒体状态", "时间在…之间"]
         if (page.sysNotifyExt) a = a.concat(["系统通知…"])
         if (page.rollcallExt) a = a.concat(["随机点名配置…"])
         return a
@@ -106,7 +109,8 @@ PluginPage {
 
     readonly property var actTypes: {
         var a = ["run", "notify", "wait", "broadcast", "set_flag",
-            "set_config", "lock", "restart", "open_settings", "set_theme", "power", "volume", "media", "app"]
+            "set_config", "lock", "restart", "open_settings", "set_theme", "power", "volume", "media", "app",
+            "countdown"]
         if (page.sysNotifyExt) a = a.concat(["sys_notify"])
         if (page.rollcallExt) a = a.concat(["rollcall_roll", "rollcall_set", "rollcall_close"])
         a = a.concat(["lesson_mode"])
@@ -116,7 +120,7 @@ PluginPage {
     readonly property var actLabels: {
         var a = ["运行命令/程序", "自动化提醒", "等待", "广播信号", "设标志",
             "设置配置项", "锁定配置项", "重启主程序", "打开系统设置页",
-            "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理"]
+            "切换深/浅色主题", "电源", "音量", "媒体控制", "应用管理", "倒计时提醒"]
         if (page.sysNotifyExt) a = a.concat(["发系统通知"])
         if (page.rollcallExt) a = a.concat(["触发随机点名", "设置随机点名", "关闭点名窗口"])
         a = a.concat(["课程展示模式"])
@@ -701,7 +705,13 @@ PluginPage {
             case "today_is": return page.labelOf(page.weekValues, page.weekLabels, t.p1)
             case "later_than": return t.p1 || ""
             case "earlier_than": return t.p1 || ""
-            case "idle": return t.p1 ? (t.p1 + " 秒") : "60 秒"
+            case "idle": {
+                var idleN = parseInt(t.p1 || "60") || 60
+                return "未触碰 " + idleN + " 秒"
+            }
+            case "time_range": return (t.p1 || "") + " ~ " + (t.p2 || "")
+            case "time_between": return "在 " + (t.p1 || "") + " 与 " + (t.p2 || "") + " 之间"
+            case "countdown": return (t.p1 || "") + " · " + (t.p3 || "60") + " 秒"
             case "current_subject":
             case "next_subject":
             case "prev_subject": return t.p1 || ""
@@ -909,6 +919,8 @@ PluginPage {
             case "rollcall_picked": return trigRollcallPickedComp
             case "class_start":
             case "class_end": return trigSubjectComp
+            case "idle": return trigIdleComp
+            case "time_range": return trigTimeRangeComp
             default: return null
         }
     }
@@ -929,6 +941,7 @@ PluginPage {
             case "flag_is": return ruleFlagComp
             case "current_teacher":
             case "next_teacher": return ruleTeacherComp
+            case "time_between": return ruleTimeBetweenComp
             case "rollcall_config": return ruleRollcallComp
             default: return null
         }
@@ -954,6 +967,7 @@ PluginPage {
             case "rollcall_close": return actRollcallCloseComp
             case "lesson_mode": return actLessonModeComp
             case "scroll_text": return actScrollTextComp
+            case "countdown": return actCountdownComp
             default: return null
         }
     }
@@ -2845,6 +2859,224 @@ PluginPage {
     }
 
     // ══════════════ 界面 ══════════════
+    // ── 长时间未触碰电脑（触发器）─────────────────────────────
+    Component {
+        id: trigIdleComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            property bool loading: false
+            function total() {
+                return Math.max(1, Math.round(minSpin.value) * 60 + Math.round(secSpin.value))
+            }
+            function save() { if (!loading && it) it.p1 = String(total()) }
+            function load(item) {
+                it = item
+                loading = true
+                var t = Math.max(1, parseInt(String(item.p1 == null ? "" : item.p1), 10) || 300)
+                minSpin.value = Math.floor(t / 60)
+                secSpin.value = t % 60
+                loading = false
+            }
+            SpinBox {
+                id: minSpin
+                Layout.preferredWidth: 104
+                from: 0; to: 1440; stepSize: 1; editable: true
+                onValueChanged: if (!loading) save()
+            }
+            Text { text: "分" }
+            SpinBox {
+                id: secSpin
+                Layout.preferredWidth: 104
+                from: 0; to: 59; stepSize: 1; editable: true
+                onValueChanged: if (!loading) save()
+            }
+            Text { text: "秒（一直没有键鼠操作就触发一次）" }
+            Item { Layout.fillWidth: true }
+        }
+    }
+
+    // ── 时间段内：开始 — 结束（进入触发，开「恢复」离开还原）────
+    Component {
+        id: trigTimeRangeComp
+        ColumnLayout {
+            id: rangeRoot
+            spacing: 6
+            property var it: null
+            property bool loading: false
+            function load(item) {
+                it = item
+                loading = true
+                var m1 = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(item.p1 || ""))
+                var m2 = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(item.p2 || ""))
+                var aH = m1 ? m1[1] : "08", aM = m1 ? m1[2] : "00", aS = (m1 && m1[3]) ? m1[3] : "00"
+                var bH = m2 ? m2[1] : "17", bM = m2 ? m2[2] : "00", bS = (m2 && m2[3]) ? m2[3] : "00"
+                item.p1 = aH + ":" + aM + ":" + aS
+                item.p2 = bH + ":" + bM + ":" + bS
+                startF.setTime(aH + ":" + aM)
+                startSec.value = parseInt(aS, 10)
+                endF.setTime(bH + ":" + bM)
+                endSec.value = parseInt(bS, 10)
+                weekBox.load(item)
+                skipSw.checked = (item.p4 === "1")
+                loading = false
+            }
+            function save() {
+                if (loading || !it) return
+                var a = startF.time
+                if (/^\d{2}:\d{2}$/.test(a))
+                    it.p1 = a + ":" + ("0" + Math.round(startSec.value)).slice(-2)
+                var b = endF.time
+                if (/^\d{2}:\d{2}$/.test(b))
+                    it.p2 = b + ":" + ("0" + Math.round(endSec.value)).slice(-2)
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 8
+                RowLayout {
+                    spacing: 4
+                    Text { text: "开始"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    TimePicker {
+                        id: startF
+                        Layout.preferredWidth: 150
+                        use24Hour: true
+                        onTimeChanged: rangeRoot.save()
+                    }
+                    SpinBox {
+                        id: startSec
+                        from: 0; to: 59; editable: true
+                        Layout.preferredWidth: 92
+                        onValueModified: rangeRoot.save()
+                    }
+                    Text { text: "秒"; opacity: 0.72 }
+                }
+                RowLayout {
+                    spacing: 4
+                    Text { text: "结束"; height: 30; verticalAlignment: Text.AlignVCenter }
+                    TimePicker {
+                        id: endF
+                        Layout.preferredWidth: 150
+                        use24Hour: true
+                        onTimeChanged: rangeRoot.save()
+                    }
+                    SpinBox {
+                        id: endSec
+                        from: 0; to: 59; editable: true
+                        Layout.preferredWidth: 92
+                        onValueModified: rangeRoot.save()
+                    }
+                    Text { text: "秒"; opacity: 0.72 }
+                }
+                RowLayout {
+                    spacing: 6
+                    Text { text: "星期"; opacity: 0.72 }
+                    WeekdayPicker { id: weekBox; field: "p3" }
+                }
+            }
+            Switch {
+                id: skipSw
+                text: "自动跳过非上课日（当天课表没有课程时不触发）"
+                onToggled: if (it) it.p4 = (checked ? "1" : "")
+            }
+        }
+    }
+
+    // ── 时间在…与…之间（判定条件，支持跨零点）──────────────────
+    Component {
+        id: ruleTimeBetweenComp
+        RowLayout {
+            spacing: 6
+            property var it: null
+            property bool loading: false
+            function load(item) {
+                it = item
+                loading = true
+                if (!/^\d{1,2}:\d{2}/.test(String(item.p1 || ""))) item.p1 = "08:00"
+                if (!/^\d{1,2}:\d{2}/.test(String(item.p2 || ""))) item.p2 = "12:00"
+                aF.setTime(String(item.p1).slice(0, 5))
+                bF.setTime(String(item.p2).slice(0, 5))
+                loading = false
+            }
+            function save() {
+                if (loading || !it) return
+                if (/^\d{2}:\d{2}$/.test(aF.time)) it.p1 = aF.time
+                if (/^\d{2}:\d{2}$/.test(bF.time)) it.p2 = bF.time
+            }
+            Text { text: "时间在"; height: 30; verticalAlignment: Text.AlignVCenter }
+            TimePicker {
+                id: aF
+                Layout.preferredWidth: 150
+                use24Hour: true
+                onTimeChanged: save()
+            }
+            Text { text: "与"; height: 30; verticalAlignment: Text.AlignVCenter }
+            TimePicker {
+                id: bF
+                Layout.preferredWidth: 150
+                use24Hour: true
+                onTimeChanged: save()
+            }
+            Text { text: "之间"; height: 30; verticalAlignment: Text.AlignVCenter }
+            Item { Layout.fillWidth: true }
+        }
+    }
+
+    // ── 倒计时提醒：每秒刷新剩余秒数，结束后才走下一步 ──────────
+    Component {
+        id: actCountdownComp
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            property var it: null
+            property bool loading: false
+            function load(item) {
+                it = item
+                loading = true
+                titleF.text = item.p1 || "倒计时提醒"
+                bodyF.text = item.p2 || ""
+                secSpin.value = Math.max(1, parseInt(item.p3 || "60") || 60)
+                var li = page.levelValues.indexOf(item.p4 || "")
+                lvlCombo.currentIndex = Math.max(0, li)
+                revealSw.checked = String(item.p5 || "") === "1"
+                loading = false
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                TextField {
+                    id: titleF
+                    Layout.fillWidth: true
+                    placeholderText: "标题"
+                    onTextEdited: if (it) it.p1 = text
+                }
+                TextField {
+                    id: bodyF
+                    Layout.fillWidth: true
+                    placeholderText: "正文（可空）"
+                    onTextEdited: if (it) it.p2 = text
+                }
+                SpinBox {
+                    id: secSpin
+                    Layout.preferredWidth: 100
+                    from: 1; to: 3600; stepSize: 1; editable: true
+                    onValueChanged: if (!loading && it) it.p3 = String(Math.round(value))
+                }
+                Text { text: "秒" }
+                ComboBox {
+                    id: lvlCombo
+                    Layout.preferredWidth: 130
+                    model: page.levelLabels
+                    onActivated: if (it) it.p4 = page.levelValues[index]
+                }
+            }
+            Switch {
+                id: revealSw
+                text: "隐藏小组件时临时恢复显示"
+                onToggled: if (it) it.p5 = (checked ? "1" : "")
+            }
+        }
+    }
+
     SettingsLayout {
         width: parent.width
         spacing: 12

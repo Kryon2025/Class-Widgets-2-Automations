@@ -1,7 +1,7 @@
 {
   "id": "com.kryon.automations",
   "name": "Kryon的自动化",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "api_version": "~=0.7.0",
   "entry": "main.py",
   "author": "Kryon, orange838",
