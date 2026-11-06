@@ -691,6 +691,18 @@ PluginPage {
         return String(target || "")
     }
     function subjectOptions() { return ["（任意课）"].concat(page.subjects) }
+    function trigSubjectSummary(t) {
+        var parts = []
+        if (t.p1) parts.push("仅「" + t.p1 + "」")
+        var n = parseInt(t.p2, 10)
+        if (n > 0) parts.push("第 " + n + " 节")
+        return parts.join(" · ")
+    }
+    function lessonOrdinalOptions() {
+        var a = ["（不限节次）"]
+        for (var i = 1; i <= 20; i++) a.push("第 " + i + " 节")
+        return a
+    }
     function detailOf(t) {
         if (!t) return ""
         switch (t.type) {
@@ -753,8 +765,8 @@ PluginPage {
             case "rollcall_config": return page.labelOf(page.rollcallKeys, page.rollcallLabels, t.p1)
                 + " = " + (t.p2 || "")
             case "rollcall_close": return "关闭点名窗口"
-            case "class_start": return t.p1 ? ("仅「" + t.p1 + "」") : ""
-            case "class_end": return t.p1 ? ("仅「" + t.p1 + "」") : ""
+            case "class_start": return trigSubjectSummary(t)
+            case "class_end": return trigSubjectSummary(t)
             case "lesson_mode": return page.lessonModeLabels[Math.max(0, page.lessonModes.indexOf(t.p1))]
             case "scroll_text": {
                 var s1 = String(t.p1 || "")
@@ -1218,25 +1230,40 @@ PluginPage {
 
     Component {
         id: trigSubjectComp
-        RowLayout {
+        ColumnLayout {
             spacing: 6
             property var it: null
+            property bool loading: false
             function load(item) {
                 it = item
+                loading = true
                 var opts = page.subjectOptions()
                 subjCombo.currentIndex = Math.max(0, opts.indexOf(item.p1 || ""))
+                var n = parseInt(item.p2, 10)
+                nthCombo.currentIndex = (n > 0 && n <= 20) ? n : 0
+                loading = false
             }
-            ComboBox {
-                id: subjCombo
+            RowLayout {
+                spacing: 6
                 Layout.fillWidth: true
-                model: page.subjectOptions()
-                onActivated: if (it) it.p1 = (index === 0 ? "" : page.subjectOptions()[index])
-            }
-            Text {
-                text: "留「任意课」表示每节都触发"
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-                opacity: 0.62
+                ComboBox {
+                    id: subjCombo
+                    Layout.preferredWidth: 150
+                    model: page.subjectOptions()
+                    onActivated: if (it && !loading) it.p1 = (index === 0 ? "" : page.subjectOptions()[index])
+                }
+                ComboBox {
+                    id: nthCombo
+                    Layout.preferredWidth: 150
+                    model: page.lessonOrdinalOptions()
+                    onActivated: if (it && !loading) it.p2 = (index === 0 ? "" : String(index))
+                }
+                Text {
+                    text: "科目留「任意课」=每节都触发；节次留「不限」=每节都触发"
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                    opacity: 0.62
+                }
             }
         }
     }
