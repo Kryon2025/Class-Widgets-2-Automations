@@ -15,8 +15,8 @@ import ClassWidgets.Plugins
 
 PluginPage {
     id: page
-    pluginId: "org.cslblog.betterautomations"
-    title: "更好的自动化"
+    pluginId: "com.kryon.automations"
+    title: "Kryon的自动化"
 
     // 页头只留工具按钮：「随机点名联动 / 系统通知」两个开关已收进
     // 主界面的「扩展功能」折叠列表（见下方 SettingsLayout）。
@@ -2899,7 +2899,7 @@ PluginPage {
                                   page.dismissHint("revert")
         }
 
-        // 旧插件并存提示：检测到 com.kryon.automations 仍启用时显示
+        // 旧插件并存提示：检测到 org.cslblog.betterautomations 仍启用时显示
         InfoBar {
             id: oldPluginHint
             Layout.fillWidth: true

@@ -302,12 +302,13 @@ class RuleEngine(QObject):
         if not (isinstance(raw, dict) and raw.get("rules")):
             try:
                 if not self._storage.is_file():
-                    # 本插件由 Kryon 自动化修改而来：首次启动时复制旧插件的规则，避免用户重配
-                    old_file = self._storage.parent / "com.kryon.automations.json"
+                    # 3.1.0 起本插件回归 com.kryon.automations：首次启动时把
+                    # 3.0.x 版「更好的自动化」的规则文件复制过来，避免用户重配
+                    old_file = self._storage.parent / "org.cslblog.betterautomations.json"
                     if old_file.is_file():
                         import shutil as _shutil
                         _shutil.copyfile(old_file, self._storage)
-                        logger.info("[automations] 已从旧版 com.kryon.automations 迁移规则文件")
+                        logger.info("[automations] 已从 3.0.x「更好的自动化」迁移规则文件")
                 if self._storage.is_file():
                     legacy = json.loads(self._storage.read_text(encoding="utf-8"))
                     if isinstance(legacy, dict) and legacy.get("rules"):
@@ -447,7 +448,7 @@ class RuleEngine(QObject):
 
     # ── 导出 / 导入（规则可带到别的机器上用）─────────────────
 
-    RULES_FILE_SCHEMA = "org.cslblog.betterautomations.rules"
+    RULES_FILE_SCHEMA = "com.kryon.automations.rules"
     RULES_FILE_VERSION = 1
     MAX_IMPORT_BYTES = 2 * 1024 * 1024      # 2 MB：正常规则文件远低于这个数
     MAX_IMPORT_RULES = 1000                 # 一次性最多导入这么多条

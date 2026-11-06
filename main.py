@@ -19,7 +19,7 @@ from widget_backend import AutomationsWidgetBackend
 import deps
 import scroll_text
 
-CFG_NAME = "org.cslblog.betterautomations.json"
+CFG_NAME = "com.kryon.automations.json"
 
 # 官方自动化任务框架（主程序运行时可用；降级则用引擎自带的每秒定时器）
 try:
@@ -39,14 +39,14 @@ class RuleEngineTask(AutomationTask):
 
     @property
     def name(self) -> str:
-        return "org.cslblog.betterautomations.engine"
+        return "com.kryon.automations.engine"
 
     def update(self) -> None:
         self._engine.update()
 
 
 def _app_root() -> Path:
-    # <主程序根>/plugins/org.cslblog.betterautomations/main.py -> 主程序根
+    # <主程序根>/plugins/com.kryon.automations/main.py -> 主程序根
     return Path(__file__).resolve().parent.parent.parent
 
 
@@ -80,8 +80,8 @@ class Plugin(CW2Plugin):
         provider = None
         try:
             provider = self.api.notification.register_provider(
-                provider_id=getattr(self, "pid", None) or "org.cslblog.betterautomations",
-                name="更好的自动化 / Better Automations",
+                provider_id=getattr(self, "pid", None) or "com.kryon.automations",
+                name="Kryon的自动化 / Automations",
                 icon="icon.png",
                 # 必须为 False：True 会让宿主把每条灵动通知【自动镜像】成一条
                 # 系统通知，用户会看到"灵动通知结束后又响一声另一种样式"的重复打扰。
@@ -128,7 +128,7 @@ class Plugin(CW2Plugin):
         try:
             self.api.ui.register_settings_page(
                 qml_path=str(Path(__file__).parent / "qml" / "settings.qml"),
-                title="更好的自动化",
+                title="Kryon的自动化",
                 icon="ic_fluent_arrow_autofit_height_20_regular",
             )
             logger.info("[automations] 设置页注册成功")
@@ -138,7 +138,7 @@ class Plugin(CW2Plugin):
         try:
             self._widget_backend = AutomationsWidgetBackend(self)
             self.api.widgets.register(
-                widget_id="org.cslblog.betterautomations.status",
+                widget_id="com.kryon.automations.status",
                 name="自动化",
                 qml_path=str(Path(__file__).parent / "qml" / "widget.qml"),
                 backend_obj=self._widget_backend,
@@ -272,13 +272,13 @@ class Plugin(CW2Plugin):
 
     # ── 旧插件并存检测 ──────────────────────────────────────
     def _detect_old_plugin(self) -> bool:
-        """旧的 com.kryon.automations 若仍在本机且处于启用状态，返回 True。
+        """3.0.x 的「更好的自动化」若仍在本机且处于启用状态，返回 True。
 
-        规则已自动迁移过来，两套引擎同时跑会让同一条规则触发两次，
-        所以检测到就弹一次系统通知，并在设置页顶部常驻一条提示。
+        3.1.0 起回归 com.kryon.automations，规则已自动迁移；
+        两套引擎同时跑会让同一条规则触发两次，所以检测到就提示一次。
         """
         root = _app_root()
-        old_id = "com.kryon.automations"
+        old_id = "org.cslblog.betterautomations"
         if not (root / "plugins" / old_id).exists():
             return False
         enabled = []
@@ -296,8 +296,8 @@ class Plugin(CW2Plugin):
             try:
                 import notify
                 notify.send(
-                    "更好的自动化",
-                    "检测到旧插件「Kryon的自动化」仍在启用。请停用或卸载它，否则同一条规则会触发两次；规则已自动迁移，无需重新配置。",
+                    "Kryon的自动化",
+                    "检测到旧插件「更好的自动化」仍在启用。请停用或卸载它，否则同一条规则会触发两次；规则已自动迁移，无需重新配置。",
                 )
             except Exception as e:                        # noqa: BLE001
                 logger.warning("[automations] 旧插件提示通知发送失败: {}", e)
@@ -306,7 +306,7 @@ class Plugin(CW2Plugin):
                 flag.write_text("1", encoding="utf-8")
             except Exception:                             # noqa: BLE001
                 pass
-        logger.warning("[automations] 旧插件 com.kryon.automations 仍在启用，已提示用户停用")
+        logger.warning("[automations] 旧插件 org.cslblog.betterautomations 仍在启用，已提示用户停用")
         return True
 
     # ── 全屏播放文字 ────────────────────────────────────────

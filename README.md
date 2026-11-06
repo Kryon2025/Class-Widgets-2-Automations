@@ -1,24 +1,24 @@
 <div align="center">
 
-<img src="icon.png" height="120" alt="更好的自动化">
-<h1>更好的自动化 <sub>Better Automations</sub></h1>
+<img src="icon.png" height="120" alt="Kryon的自动化">
+<h1>Kryon的自动化 <sub>Automations</sub></h1>
 
 <p>为 Class Widgets 2 提供自动化能力，注册为官方 <code>AutomationTask</code>，随主程序每秒调度，无需自建后台线程。</p>
 
-<p><b>本插件由「Kryon 自动化」（com.kryon.automations）修改而来</b>，插件 ID 为 <code>org.cslblog.betterautomations</code>，<b>保留了原插件 2.0.7 的全部功能</b>，并在此之上新增了「上课/下课触发可限定科目」与「课程展示模式」行动（联动「全量展示课程」插件）。</p>
+<p>原作者 <b>Kryon</b>；<b>orange838</b> 在此基础上加了滚动文字（全屏 / 顶部横幅）、给其它插件用的远程横幅接口、上课与活动期间禁止推送等能力。<b>3.0.x 的「更好的自动化」已合并回本条线</b>，插件 ID 统一为 <code>com.kryon.automations</code>，原有规则自动迁移。</p>
 
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-2.1.0-5A9BFF?style=for-the-badge)](https://github.com/orange838/better-automations/releases)
-[![开源许可](https://img.shields.io/github/license/orange838/Class-Widgets-2-Automations?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](https://github.com/orange838/better-automations/blob/main/LICENSE)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-3.1.0-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
+[![开源许可](https://img.shields.io/github/license/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/LICENSE)
 
-<p>原插件：[Kryon2025/Class-Widgets-2-Automations](https://github.com/Kryon2025/Class-Widgets-2-Automations) · 上游协议 MIT，本仓库沿用</p>
+<p>发布仓库：[Kryon2025/Class-Widgets-2-Automations](https://github.com/Kryon2025/Class-Widgets-2-Automations) · 开发仓库：[orange838/better-automations](https://github.com/orange838/better-automations) · 协议 MIT</p>
 
 </div>
 
 > [!NOTE]
-> 当前版本 **2.1.0**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
+> 当前版本 **3.1.0**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
 > 
-> **从「Kryon 自动化」迁移**：本插件首次启动时会自动把旧插件 `com.kryon.automations` 的规则复制过来，**原有规则不用重新配置**。
-> 迁移完成后请**停用或卸载**原「Kryon的自动化」插件——两套引擎同时启用的话，同一条规则会被触发两次。
+> **从 3.0.x「更好的自动化」迁移**：首次启动时会自动把 `org.cslblog.betterautomations.json` 复制过来，**原有规则不用重新配置**。
+> 迁移完成后请**停用或卸载**「更好的自动化」——两套引擎同时启用的话，同一条规则会被触发两次。
 
 ## 功能特性
 
@@ -193,22 +193,25 @@
 
 见 [CHANGELOG.md](CHANGELOG.md)。
 
-## 与上游（Kryon 自动化）的差异
+## 3.0.x 线带来的改动
 
-
-本仓库是 [Kryon2025/Class-Widgets-2-Automations](https://github.com/Kryon2025/Class-Widgets-2-Automations) 的修改版，全部原功能保留，改动如下：
-
+3.0.x 曾以「更好的自动化」（`org.cslblog.betterautomations`）单独发过版，v3.1.0 起合并回本条线，全部功能保留：
 
 | 位置 | 改动 |
 |---|---|
-| `cwplugin.json` | 插件 ID 改为 `org.cslblog.betterautomations`，名称「更好的自动化」，版本 2.1.0 |
-| `automations.py` | ① `fire()` 对上课/下课触发器按 `p1` 科目过滤（新增 `_trigger_subject()`，下课时回退上一科）② 新增 `lesson_mode` 行动分发与 `_do_lesson_mode()` ③ 规则加载时自动迁移旧插件配置文件 |
-| `qml/settings.qml` | ① 上课/下课触发器显示科目下拉（`trigSubjectComp`）② `lesson_mode` 行动编辑器（`actLessonModeComp`）③ 摘要与详情文案适配 |
-| `main.py` / `app_index.py` | 配置文件名、组件 ID、缓存文件名跟随新插件 ID |
+| `scroll_text.py` | ① 播放文字支持「全屏 / 顶部横幅」两种模式，横幅按字号自适应、屏幕顶部留白 ② 时长到点也等整段文字滚出屏幕再关，填 0 则一直循环 ③ 播放窗口不进任务栏、不出现在 Alt+Tab ④ 编辑窗控件改实色，修鼠标悬停黑白闪 ⑤ `playBanner()` / `close_external_banner()` 给其它插件用 |
+| `automations.py` | ① `fire()` 对上课/下课触发器按 `p1` 科目过滤（`_trigger_subject()`，下课时回退上一科）② 新增 `lesson_mode` 行动分发与 `_do_lesson_mode()` ③ 上课 / 活动期间拒绝远程横幅，上课铃响撤掉已显示的远程横幅 ④ 规则加载时自动迁移 3.0.x 的配置 |
+| `qml/settings.qml` | ① 上课/下课触发器显示科目下拉（`trigSubjectComp`）② `lesson_mode` 行动编辑器（`actLessonModeComp`）③ 播放文字增加「显示」下拉（全屏 / 顶部横幅） |
+| `main.py` / `app_index.py` | 播放文字入口、`playBanner` / `bannerBlockReason` 槽、缓存文件名 |
 
+协议沿用 MIT License，原作者是 [Kryon2025](https://github.com/Kryon2025)。
 
-协议沿用上游的 MIT License，原作者是 [Kryon2025](https://github.com/Kryon2025)。
+## 维护者
 
+- **Kryon** — 原作者，发布与广场条目（`com.kryon.automations`）维护
+- **orange838** — 3.0.x 功能开发，改动通过 PR 合入本仓库
+
+两边都保留完整仓库和 CI；任何一方停止维护时，另一方可以直接接手发版。
 
 ## 已知问题
 
