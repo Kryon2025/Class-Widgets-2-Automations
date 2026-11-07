@@ -7,7 +7,7 @@
 
 <p>触发器 + 规则集 + 行动三段式配置，支持自动恢复、播放文字（全屏 / 顶部横幅）、规则导出 / 导入，以及托盘快捷面板入口。</p>
 
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-3.2.0-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-3.2.2-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
 [![开源许可](https://img.shields.io/github/license/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/LICENSE)
 
 <p>
