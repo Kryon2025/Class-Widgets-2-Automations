@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>触发器一览 · 更好的自动化</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="site">更好的自动化</span>
+  <nav>
+    <a href="index.html">首页</a>
+    <a href="install.html">安装</a>
+    <a href="triggers.html" class="active">触发器</a>
+    <a href="actions.html">行动</a>
+    <a href="lesson-ordinal.html">节次限定</a>
+    <a href="changelog.html">更新记录</a>
+  </nav>
+  <div class="ext"><a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">GitHub ↗</a></div>
+</header>
+
+<div class="doc">
+  <aside class="doc-sidebar">
+    <div class="group">开始</div>
+    <a href="index.html">插件介绍</a>
+    <a href="install.html">安装与更新</a>
+    <div class="group">参考</div>
+    <a href="triggers.html" class="active">触发器一览</a>
+    <a href="actions.html">行动一览</a>
+    <a href="lesson-ordinal.html">第几节课限定</a>
+    <div class="group">记录</div>
+    <a href="changelog.html">更新记录</a>
+  </aside>
+
+  <main class="doc-main">
+    <h1>触发器一览</h1>
+    <div class="meta-bar">
+      <span>内置 <b>15 种</b></span>
+      <span>扩展可选 <b>3 种</b></span>
+      <span>轮询下限 <b>15 秒</b></span>
+    </div>
+    <p>每条自动化由 <strong>触发器</strong> 起头，可叠加若干 <a href="actions.html">行动</a>；触发条件满足时行动依次执行。以下为内置触发器，扩展触发器取决于是否安装对应联动插件。</p>
+
+    <h2 id="schedule">课表类</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>触发器</th><th>说明</th><th>参数</th></tr></thead>
+      <tbody>
+        <tr><td><strong>上课时</strong></td><td>每节课开始时触发</td><td>科目（可空）；第几节课（可空，v3.2.0+）</td></tr>
+        <tr><td><strong>下课时</strong></td><td>每节课结束时触发</td><td>科目（可空）；第几节课（可空，v3.2.0+）</td></tr>
+        <tr><td><strong>课间休息时</strong></td><td>进入课间休息时触发</td><td>—</td></tr>
+        <tr><td><strong>放学时</strong></td><td>以主程序状态为准（报空闲即视为放学），拿不到状态时按课表推算兜底</td><td>—</td></tr>
+        <tr><td><strong>上课前</strong></td><td>上课前固定秒数触发</td><td>科目（可空）；提前秒数</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 id="time">时间类</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>触发器</th><th>说明</th><th>参数</th></tr></thead>
+      <tbody>
+        <tr><td><strong>定时</strong></td><td>每天指定时间触发；星期用七个复选框（全不选 = 不触发）；可勾选自动跳过非上课日</td><td>时:分:秒；星期</td></tr>
+        <tr><td><strong>闹钟</strong></td><td>到点弹系统级通知并异步响铃（系统提示音 / 警告音 / 自定义 .wav），无需另配行动</td><td>时:分:秒；星期；铃音</td></tr>
+        <tr><td><strong>间隔触发</strong></td><td>每隔固定时间触发一次</td><td>间隔（分/秒）</td></tr>
+        <tr><td><strong>时间段内</strong></td><td>进入时间段触发一次（精确到秒、可跨零点、可选星期）；开启「恢复」时离开时间段自动还原</td><td>开始 / 结束时刻；星期；恢复</td></tr>
+        <tr><td><strong>长时间未触碰电脑</strong></td><td>键鼠无操作达到设定时长触发一次，一动即复位，不会重复触发</td><td>时长（分/秒）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 id="system">系统类</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>触发器</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><strong>应用启动时</strong></td><td>指定应用被打开时触发</td></tr>
+        <tr><td><strong>开机后</strong></td><td>系统开机后触发</td></tr>
+        <tr><td><strong>时间状态变化时</strong></td><td>上课 / 课间 / 放学等状态切换时触发</td></tr>
+        <tr><td><strong>系统设置变化时</strong></td><td>CW2 系统设置项变化时触发</td></tr>
+        <tr><td><strong>收到信号</strong></td><td>其它插件广播信号时触发（配合「广播信号」行动使用）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 id="ext">扩展触发器（需联动插件）</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>触发器</th><th>联动插件</th></tr></thead>
+      <tbody>
+        <tr><td>收到系统通知时</td><td>系统通知扩展</td></tr>
+        <tr><td>随机点名开始</td><td rowspan="2">随机点名 <code>com.rollcall</code></td></tr>
+        <tr><td>随机点名出结果后</td></tr>
+      </tbody>
+    </table></div>
+
+    <p class="hint">上课/下课的「第几节课」参数详见 <a href="lesson-ordinal.html">第几节课限定</a>。</p>
+
+    <footer class="page-footer">
+      <p>本站由 AI 生成 · <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">Kryon2025/Class-Widgets-2-Automations</a></p>
+    </footer>
+  </main>
+
+  <aside class="doc-toc">
+    <div class="toc-title">本页目录</div>
+    <a href="#schedule">课表类</a>
+    <a href="#time">时间类</a>
+    <a href="#system">系统类</a>
+    <a href="#ext">扩展触发器</a>
+  </aside>
+</div>
+</body>
+</html>

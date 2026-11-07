@@ -16,6 +16,8 @@
 · 开发仓库 <a href="https://github.com/orange838/better-automations">orange838/better-automations</a>（本仓库的 fork，改动经 PR 合入主线）
 </p>
 
+<p>📖 <a href="https://kryon2025.github.io/Class-Widgets-2-Automations/"><b>在线文档站</b></a>（触发器 / 行动 / 安装说明一览）</p>
+
 </div>
 
 > [!NOTE]
