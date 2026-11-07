@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>行动一览 · 更好的自动化</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="site">更好的自动化</span>
+  <nav>
+    <a href="index.html">首页</a>
+    <a href="install.html">安装</a>
+    <a href="triggers.html">触发器</a>
+    <a href="actions.html" class="active">行动</a>
+    <a href="lesson-ordinal.html">节次限定</a>
+    <a href="changelog.html">更新记录</a>
+  </nav>
+  <div class="ext"><a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">GitHub ↗</a></div>
+</header>
+
+<div class="doc">
+  <aside class="doc-sidebar">
+    <div class="group">开始</div>
+    <a href="index.html">插件介绍</a>
+    <a href="install.html">安装与更新</a>
+    <div class="group">参考</div>
+    <a href="triggers.html">触发器一览</a>
+    <a href="actions.html" class="active">行动一览</a>
+    <a href="lesson-ordinal.html">第几节课限定</a>
+    <div class="group">记录</div>
+    <a href="changelog.html">更新记录</a>
+  </aside>
+
+  <main class="doc-main">
+    <h1>行动一览</h1>
+    <div class="meta-bar">
+      <span>内置 <b>17 种</b></span>
+      <span>一条自动化可挂多个行动</span>
+    </div>
+    <p>行动是自动化被触发后依次执行的动作。同一条自动化可组合多个行动，用「等待」行动控制节奏。</p>
+
+    <h2 id="system">系统与设备</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>行动</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><strong>运行命令/程序</strong></td><td>执行命令行或启动程序</td></tr>
+        <tr><td><strong>应用管理</strong></td><td>打开 / 关闭应用，支持从应用列表选择（含开始菜单 .lnk、UWP）</td></tr>
+        <tr><td><strong>电源</strong></td><td>关机 / 重启等电源操作</td></tr>
+        <tr><td><strong>音量</strong></td><td>调整系统音量</td></tr>
+        <tr><td><strong>媒体控制</strong></td><td>播放 / 暂停等 SMTC 媒体控制；播放器未就绪时自动重试最多 10 秒</td></tr>
+        <tr><td><strong>锁定配置项</strong></td><td>防止配置被改动</td></tr>
+        <tr><td><strong>重启主程序</strong></td><td>重启 Class Widgets 2</td></tr>
+        <tr><td><strong>打开系统设置页</strong></td><td>跳转到 CW2 设置页</td></tr>
+        <tr><td><strong>切换深/浅色主题</strong></td><td>切换 CW2 主题</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 id="display">显示与提醒</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>行动</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><strong>全屏播放文字</strong></td><td>全屏或顶部横幅播放文字；超出屏宽自动从右往左滚动；高度按字号自适应；时长填 0 = 一直循环；上课/活动期间拒绝外部插件推送的横幅</td></tr>
+        <tr><td><strong>自动化提醒</strong></td><td>弹插件通知；可勾选「隐藏小组件时临时恢复显示」</td></tr>
+        <tr><td><strong>倒计时提醒</strong></td><td>从设定秒数起每秒显示「还剩 N 秒」，结束后才执行下一步；同样支持隐藏时恢复显示</td></tr>
+        <tr><td><strong>发系统通知</strong></td><td>发送系统级通知（需系统通知扩展）</td></tr>
+        <tr><td><strong>课程展示模式</strong></td><td>联动「全量展示课程」插件：进入白板模式 / 息屏模式 / 退出特殊模式</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 id="flow">流程与配置</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>行动</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><strong>等待</strong></td><td>暂停指定 分 + 秒 后继续</td></tr>
+        <tr><td><strong>广播信号</strong></td><td>向其它插件广播信号（配合「收到信号」触发器）</td></tr>
+        <tr><td><strong>设标志</strong></td><td>设置一个可被条件判断的标志位</td></tr>
+        <tr><td><strong>设置配置项</strong></td><td>修改 CW2 配置</td></tr>
+        <tr><td><strong>触发随机点名 / 设置随机点名 / 关闭点名窗口</strong></td><td>联动随机点名插件（需安装）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h2 id="misc">其他</h2>
+    <p>行动之外，每条自动化还支持「条件」判定（如当前科目、时间区间、前台窗口、标志位等 17 种），只有条件全部满足时行动才会执行；也支持「跑完自动停用」「恢复」等开关。</p>
+
+    <footer class="page-footer">
+      <p>本站由 AI 生成 · <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">Kryon2025/Class-Widgets-2-Automations</a></p>
+    </footer>
+  </main>
+
+  <aside class="doc-toc">
+    <div class="toc-title">本页目录</div>
+    <a href="#system">系统与设备</a>
+    <a href="#display">显示与提醒</a>
+    <a href="#flow">流程与配置</a>
+    <a href="#misc">其他</a>
+  </aside>
+</div>
+</body>
+</html>
