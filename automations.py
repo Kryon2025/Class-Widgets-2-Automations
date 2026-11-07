@@ -1296,7 +1296,7 @@ class RuleEngine(QObject):
         QTimer.singleShot(self.MEDIA_RETRY_INTERVAL, tick)
 
     def _do_countdown(self, a: dict) -> None:
-        """倒计时提醒：每秒刷新「还剩 N 秒」，倒计时结束后才执行下一步。"""
+        """倒计时提醒：一条灵动通知，正文显示「还剩 N 秒」并每秒刷新；结束后才执行下一步。"""
         if self._provider is None:
             if not self._notify_unregistered_warned:
                 self._notify_unregistered_warned = True
@@ -1304,7 +1304,6 @@ class RuleEngine(QObject):
             return
         try:
             title = str(a.get("p1") or "倒计时提醒")
-            message = str(a.get("p2") or "")
             total = max(1, int(float(a.get("p3") or 60)))
             level = max(0, min(3, int(float(a.get("p4") or 0))))
             reveal = str(a.get("p5") or "") == "1"
@@ -1313,13 +1312,14 @@ class RuleEngine(QObject):
             self._cd_seq = getattr(self, "_cd_seq", 0) + 1
             seq = self._cd_seq
             logger.info("[automations] 倒计时提醒: {} 秒, 级别 {}", total, level)
-            self._push_notify("%s（还剩 %d 秒）" % (title, total), message, 1100, level)
+            # 灵动通知：标题保持用户填的标题，正文显示倒计时
+            self._push_notify(title, "还剩 %d 秒" % total, 1100, level)
 
             def tick(left: int) -> None:
                 if getattr(self, "_cd_seq", 0) != seq or left <= 0:
                     return
                 try:
-                    self._push_notify("%s（还剩 %d 秒）" % (title, left), message, 1100, level)
+                    self._push_notify(title, "还剩 %d 秒" % left, 1100, level)
                 except Exception as e:                   # noqa: BLE001
                     logger.debug("[automations] 倒计时刷新失败: {}", e)
                     return

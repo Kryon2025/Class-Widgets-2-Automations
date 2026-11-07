@@ -3021,7 +3021,7 @@ PluginPage {
         }
     }
 
-    // ── 倒计时提醒：每秒刷新剩余秒数，结束后才走下一步 ──────────
+    // ── 倒计时提醒：灵动通知，正文显示「还剩 N 秒」并每秒刷新 ──────
     Component {
         id: actCountdownComp
         ColumnLayout {
@@ -3033,7 +3033,6 @@ PluginPage {
                 it = item
                 loading = true
                 titleF.text = item.p1 || "倒计时提醒"
-                bodyF.text = item.p2 || ""
                 secSpin.value = Math.max(1, parseInt(item.p3 || "60") || 60)
                 var li = page.levelValues.indexOf(item.p4 || "")
                 lvlCombo.currentIndex = Math.max(0, li)
@@ -3048,12 +3047,6 @@ PluginPage {
                     Layout.fillWidth: true
                     placeholderText: "标题"
                     onTextEdited: if (it) it.p1 = text
-                }
-                TextField {
-                    id: bodyF
-                    Layout.fillWidth: true
-                    placeholderText: "正文（可空）"
-                    onTextEdited: if (it) it.p2 = text
                 }
                 SpinBox {
                     id: secSpin

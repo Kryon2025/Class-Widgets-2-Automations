@@ -428,12 +428,9 @@ class Plugin(CW2Plugin):
         """打开「快捷管理自动化」小窗（快捷面板条目触发）。"""
         try:
             if self._quick_manager is None:
-                from quick_manager import QuickRuleManager
-                self._quick_manager = QuickRuleManager(self)
-            self._quick_manager.reload()
+                from quick_manager import QuickRuleWindow
+                self._quick_manager = QuickRuleWindow(self)
             self._quick_manager.show()
-            self._quick_manager.raise_()
-            self._quick_manager.activateWindow()
         except Exception as e:                           # noqa: BLE001
             logger.warning("[automations] 打开「快捷管理自动化」失败: {}", e)
 
