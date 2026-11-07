@@ -1017,7 +1017,8 @@ class RuleEngine(QObject):
             for rule in self._rules:
                 if not rule.get("enabled"):
                     continue
-                # 上课/下课触发器支持 p1 限定科目（留空 = 任意课）
+                # 上课/下课触发器支持 p1 限定科目（留空 = 任意课）、
+                # p2 限定当天第几节课（留空 = 不限；按当天上课条目开始时间排序计数）
                 for tr in (rule.get("triggers") or []):
                     if tr.get("type") != ttype:
                         continue
@@ -1025,6 +1026,14 @@ class RuleEngine(QObject):
                         want = str(tr.get("p1") or "").strip()
                         if want and not self._subject_match(self._trigger_subject(ttype), want):
                             continue
+                        nth = str(tr.get("p2") or "").strip()
+                        if nth:
+                            try:
+                                n = int(nth)
+                            except ValueError:
+                                n = 0
+                            if n > 0 and self._lesson_ordinal(ttype) != n:
+                                continue
                     self._maybe_fire(rule, {"type": ttype})
                     break
 
@@ -2060,6 +2069,51 @@ class RuleEngine(QObject):
             return self._subject_by_id(subject_id)
         except Exception:
             return None
+
+    def _lesson_ordinal(self, ttype: str) -> int:
+        """当前是当天第几节课（上课条目按开始时间排序，1 起数）。"""
+        try:
+            entries = [
+                e for e in (self._api.runtime.current_day_entries or [])
+                if isinstance(e, dict) and str(e.get("type") or "") in ("class", "activity")
+            ]
+            entries.sort(key=lambda e: str(e.get("start") or e.get("startTime") or ""))
+            cur_id = (self._api.runtime.current_entry or {}).get("id")
+            now = self._now_minutes()
+            best = 0
+            prev_end = None
+            cur_idx = 0
+            for idx, e in enumerate(entries, start=1):
+                s = self._entry_start_minutes(e)
+                en = self._entry_end_minutes(e)
+                if cur_id and e.get("id") == cur_id:
+                    cur_idx = idx
+                if s is None or en is None:
+                    continue
+                if s <= now < en and not cur_idx:
+                    cur_idx = idx
+                if ttype == T_CLASS_END and en <= now and (prev_end is None or en >= prev_end):
+                    best, prev_end = idx, en
+            if cur_idx:
+                return cur_idx
+            return best if ttype == T_CLASS_END else 0
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _entry_start_minutes(e: dict) -> Optional[int]:
+        return Automations._hhmm_to_minutes(str(e.get("start") or e.get("startTime") or ""))
+
+    @staticmethod
+    def _entry_end_minutes(e: dict) -> Optional[int]:
+        return Automations._hhmm_to_minutes(str(e.get("end") or e.get("endTime") or ""))
+
+    @staticmethod
+    def _hhmm_to_minutes(s: str) -> Optional[int]:
+        m = re.match(r"^(\d{1,2}):(\d{2})", s.strip())
+        if not m:
+            return None
+        return int(m.group(1)) * 60 + int(m.group(2))
 
     def _trigger_subject(self, ttype: str) -> Optional[Any]:
         """上课/下课触发时对应的科目：优先当前科；下课时取不到当前科则回退上一科。"""

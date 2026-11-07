@@ -10,7 +10,13 @@
 [![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-3.2.0-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
 [![开源许可](https://img.shields.io/github/license/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/LICENSE)
 
-<p>仓库：[Kryon2025/Class-Widgets-2-Automations](https://github.com/Kryon2025/Class-Widgets-2-Automations) · 协议 MIT</p>
+<p>
+<a href="https://github.com/Kryon2025/Class-Widgets-2-Automations"><b>Kryon2025/Class-Widgets-2-Automations</b></a>
+· 协议 <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/LICENSE">MIT</a>
+· 开发仓库 <a href="https://github.com/orange838/better-automations">orange838/better-automations</a>（本仓库的 fork，改动经 PR 合入主线）
+</p>
+
+<p>📖 <a href="https://kryon2025.github.io/Class-Widgets-2-Automations/"><b>在线文档站</b></a>（触发器 / 行动 / 安装说明一览）</p>
 
 </div>
 
@@ -203,7 +209,7 @@
 ## 维护者
 
 - **Kryon** — 原作，负责发布与插件广场条目（`com.kryon.automations`）。
-- **orange838** — 日常功能开发，改动通过 PR 合入本仓库。
+- **orange838** — 日常功能开发，改动通过 PR 合入本仓库；开发仓库 [orange838/better-automations](https://github.com/orange838/better-automations)（本仓库的 fork）。
 
 任何一方连续三个月未维护，或明确表示不再维护时，另一方有权把代码接回自己的仓库、以自己的插件 ID 继续发布，
 并在插件广场写明迁移方式，保证用户不会失去维护。

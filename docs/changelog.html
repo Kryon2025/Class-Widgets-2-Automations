@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>更新记录 · 更好的自动化</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="site">更好的自动化</span>
+  <nav>
+    <a href="index.html">首页</a>
+    <a href="install.html">安装</a>
+    <a href="triggers.html">触发器</a>
+    <a href="actions.html">行动</a>
+    <a href="lesson-ordinal.html">节次限定</a>
+    <a href="changelog.html" class="active">更新记录</a>
+  </nav>
+  <div class="ext"><a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">GitHub ↗</a></div>
+</header>
+
+<div class="doc">
+  <aside class="doc-sidebar">
+    <div class="group">开始</div>
+    <a href="index.html">插件介绍</a>
+    <a href="install.html">安装与更新</a>
+    <div class="group">参考</div>
+    <a href="triggers.html">触发器一览</a>
+    <a href="actions.html">行动一览</a>
+    <a href="lesson-ordinal.html">第几节课限定</a>
+    <div class="group">记录</div>
+    <a href="changelog.html" class="active">更新记录</a>
+  </aside>
+
+  <main class="doc-main">
+    <h1>更新记录</h1>
+    <div class="meta-bar">
+      <span>当前版本 <b>v3.2.0</b></span>
+      <span>完整日志见仓库 <b>CHANGELOG.md</b></span>
+    </div>
+    <p>此处仅摘录主要版本节点，完整历史见仓库 <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
+
+    <h2 id="v320">v3.2.0</h2>
+    <ul>
+      <li><strong>倒计时提醒</strong>（行动）：每秒刷新「还剩 N 秒」，结束后才执行下一步；</li>
+      <li><strong>空闲触发器</strong>：键鼠无操作达设定时长触发一次；</li>
+      <li><strong>时间段触发器</strong>：精确到秒、可跨零点，离开可自动还原；</li>
+      <li><strong>时间区间判定</strong>：「时间在…与…之间」条件；</li>
+      <li><strong>快捷面板「快捷管理自动化」</strong>：托盘里勾选即改、立即保存；</li>
+      <li>修复媒体控制重启后失效、通知恢复显示互打断等问题；</li>
+      <li><span class="tag tag-new">本仓库</span> <strong>上课/下课触发器限定当天第几节课</strong>（PR #3）；LICENSE 恢复纯标准 MIT（PR #3）。</li>
+    </ul>
+
+    <h2 id="v310">v3.1.0</h2>
+    <ul>
+      <li><strong>合并回主线</strong>：3.0.x 曾以独立 ID 单独发版，自此统一回 <code>com.kryon.automations</code>，规则自动迁移；</li>
+      <li><span class="tag tag-new">本仓库</span> 新增「播放文字」：全屏 / 顶部横幅两种模式，横幅高度按字号自适应；</li>
+      <li><span class="tag tag-new">本仓库</span> 供其它插件调用的 <code>playBanner(text, duration)</code> 接口；上课/活动期间一律拒绝外部推送；</li>
+      <li><span class="tag tag-new">本仓库</span> 编辑面板「滚不到底」根修（面板挂窗口根节点、高度真量窗口）、参数换行适配。</li>
+    </ul>
+
+    <h2 id="v30x">v3.0.x</h2>
+    <ul>
+      <li>3.0.5：上课/活动期间拒绝远程横幅，上课铃响自动撤掉已显示的远程横幅；</li>
+      <li>3.0.4：到时也不切断滚动文字，等整段滚出屏幕再关；新增 <code>playBanner</code> 接口；</li>
+      <li>3.0.2~3.0.3：播放窗口不进任务栏、停留 0 秒 = 一直显示；</li>
+      <li>3.0.1：横幅高度按字号自适应、离顶部留 4.5% 屏高；</li>
+      <li>3.0.0：新增「显示方式」（全屏 / 顶部横幅）。</li>
+    </ul>
+
+    <h2 id="v2x">v2.x（「更好的自动化」独立发版期）</h2>
+    <ul>
+      <li>2.2.x：编辑界面在窗口缩放下重排、全屏播放文字右键菜单、触摸屏长按支持；</li>
+      <li>2.1.x：新 ID 发布、上课/下课触发器科目限定（p1）、「课程展示模式」行动、旧插件规则自动迁移；</li>
+      <li>2.0.x：规则导入/导出（带预览、合并/替换、上限保护）、保存逻辑重做（弱机不再卡顿）。</li>
+    </ul>
+
+    <footer class="page-footer">
+      <p>本站由 AI 生成 · <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">Kryon2025/Class-Widgets-2-Automations</a></p>
+    </footer>
+  </main>
+
+  <aside class="doc-toc">
+    <div class="toc-title">本页目录</div>
+    <a href="#v320">v3.2.0</a>
+    <a href="#v310">v3.1.0</a>
+    <a href="#v30x">v3.0.x</a>
+    <a href="#v2x">v2.x</a>
+  </aside>
+</div>
+</body>
+</html>

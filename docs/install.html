@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>安装 · 更好的自动化</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="site">更好的自动化</span>
+  <nav>
+    <a href="index.html">首页</a>
+    <a href="install.html" class="active">安装</a>
+    <a href="triggers.html">触发器</a>
+    <a href="actions.html">行动</a>
+    <a href="lesson-ordinal.html">节次限定</a>
+    <a href="changelog.html">更新记录</a>
+  </nav>
+  <div class="ext"><a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">GitHub ↗</a></div>
+</header>
+
+<div class="doc">
+  <aside class="doc-sidebar">
+    <div class="group">开始</div>
+    <a href="index.html">插件介绍</a>
+    <a href="install.html" class="active">安装与更新</a>
+    <div class="group">参考</div>
+    <a href="triggers.html">触发器一览</a>
+    <a href="actions.html">行动一览</a>
+    <a href="lesson-ordinal.html">第几节课限定</a>
+    <div class="group">记录</div>
+    <a href="changelog.html">更新记录</a>
+  </aside>
+
+  <main class="doc-main">
+    <h1>安装与更新</h1>
+    <div class="meta-bar">
+      <span>插件 ID <b>com.kryon.automations</b></span>
+      <span>最新版 <b>v3.2.0</b></span>
+      <span>API <b>~=0.7.0</b></span>
+    </div>
+
+    <h2 id="market">方式一：插件市场（推荐）</h2>
+    <ol>
+      <li>打开 Class Widgets 2 的「设置 → 插件」；</li>
+      <li>进入插件市场（自动化广场），搜索「<strong>更好的自动化</strong>」或「自动化」；</li>
+      <li>安装后重载插件即可。</li>
+    </ol>
+    <p class="hint">市场版本由主仓库的 Release 工作流自动发布，与 GitHub 上的最新版本一致。</p>
+
+    <h2 id="manual">方式二：手动安装</h2>
+    <ol>
+      <li>到主仓库 <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations/releases" target="_blank" rel="noopener">Releases 页面</a> 下载当前版本的 <code>.cwplugin</code> 安装包；</li>
+      <li>双击安装，或解压到 CW2 的 <code>data/plugins/com.kryon.automations/</code>；</li>
+      <li>重启 CW2 或在插件设置中重载。</li>
+    </ol>
+
+    <h2 id="migrate">从旧版「更好的自动化」迁移</h2>
+    <p>v3.0.x 时期插件曾以独立 ID <code>org.cslblog.betterautomations</code> 发布，自 v3.1.0 起回归主线 ID。首次启动会自动把旧规则文件复制过来，<strong>原有规则不需要重新配置</strong>。若旧插件「Kryon的自动化」仍在启用，设置页顶部会显示提示条提醒停用。</p>
+
+    <h2 id="verify">验证安装</h2>
+    <p>安装成功后，新建一条自动化，触发器下拉中应能看到「上课时」「下课时」等选项；选择「上课时」后参数区出现「科目」与「第几节课」两个限定条件。</p>
+
+    <footer class="page-footer">
+      <p>本站由 AI 生成 · <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">Kryon2025/Class-Widgets-2-Automations</a></p>
+    </footer>
+  </main>
+
+  <aside class="doc-toc">
+    <div class="toc-title">本页目录</div>
+    <a href="#market">方式一：插件市场</a>
+    <a href="#manual">方式二：手动安装</a>
+    <a href="#migrate">从旧版迁移</a>
+    <a href="#verify">验证安装</a>
+  </aside>
+</div>
+</body>
+</html>

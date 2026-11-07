@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第几节课限定 · 更好的自动化</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="site">更好的自动化</span>
+  <nav>
+    <a href="index.html">首页</a>
+    <a href="install.html">安装</a>
+    <a href="triggers.html">触发器</a>
+    <a href="actions.html">行动</a>
+    <a href="lesson-ordinal.html" class="active">节次限定</a>
+    <a href="changelog.html">更新记录</a>
+  </nav>
+  <div class="ext"><a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">GitHub ↗</a></div>
+</header>
+
+<div class="doc">
+  <aside class="doc-sidebar">
+    <div class="group">开始</div>
+    <a href="index.html">插件介绍</a>
+    <a href="install.html">安装与更新</a>
+    <div class="group">参考</div>
+    <a href="triggers.html">触发器一览</a>
+    <a href="actions.html">行动一览</a>
+    <a href="lesson-ordinal.html" class="active">第几节课限定</a>
+    <div class="group">记录</div>
+    <a href="changelog.html">更新记录</a>
+  </aside>
+
+  <main class="doc-main">
+    <h1>第几节课限定 <span class="tag tag-new">v3.2.0 新增</span></h1>
+    <div class="meta-bar">
+      <span>来源 <b>PR #3</b></span>
+      <span>适用 <b>上课时 / 下课时</b></span>
+      <span>可选范围 <b>第 1~20 节</b></span>
+    </div>
+    <p>上课/下课触发器新增「当天的第几节课」下拉，让规则只在特定节次的课堂时段生效。</p>
+
+    <h2 id="entry">入口位置</h2>
+    <p>新建或编辑自动化时，触发器选「上课时」或「下课时」，参数区出现两个下拉：</p>
+    <ul>
+      <li><strong>科目</strong>：限定只在某科目时触发，留「任意课」= 每节都触发；</li>
+      <li><strong>第几节课</strong>：限定只在当天第 1~20 节时触发，留「不限」= 每节都触发。</li>
+    </ul>
+    <p class="hint">两个条件同时填写时需都满足才触发。</p>
+
+    <h2 id="count">计数规则</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>场景</th><th>计数方式</th></tr></thead>
+      <tbody>
+        <tr><td>上课时</td><td>当前这节课在当天所有上课条目（按开始时间排序）中排第几</td></tr>
+        <tr><td>下课时</td><td>刚结束的那节课在当天排第几</td></tr>
+        <tr><td>条目类型</td><td>课程与活动都计入（与 CW2 主程序课表口径一致）</td></tr>
+        <tr><td>取不到节次时</td><td>判定不通过，规则不触发（按 0 处理）</td></tr>
+      </tbody>
+    </table></div>
+    <p class="hint">例：课表含 4 节课 + 1 个活动，下午那节课在全天按开始时间排第 5 位，它的「第几节课」就是 5。</p>
+
+    <h2 id="cases">典型用法</h2>
+    <ul>
+      <li><strong>只在第一节上课时提醒</strong>：触发器「上课时」+ 节次「第 1 节」→ 晨读开始提醒；</li>
+      <li><strong>最后一节下课时收尾</strong>：触发器「下课时」+ 节次选当天最后一节 → 放学清理；</li>
+      <li><strong>特定科目特定节次</strong>：科目与节次叠加，例如只在「第 3 节的数学」上课时弹出某程序。</li>
+    </ul>
+
+    <footer class="page-footer">
+      <p>本站由 AI 生成 · <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">Kryon2025/Class-Widgets-2-Automations</a></p>
+    </footer>
+  </main>
+
+  <aside class="doc-toc">
+    <div class="toc-title">本页目录</div>
+    <a href="#entry">入口位置</a>
+    <a href="#count">计数规则</a>
+    <a href="#cases">典型用法</a>
+  </aside>
+</div>
+</body>
+</html>
