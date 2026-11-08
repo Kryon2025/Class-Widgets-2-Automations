@@ -115,6 +115,7 @@ PluginPage {
         if (page.rollcallExt) a = a.concat(["rollcall_roll", "rollcall_set", "rollcall_close"])
         a = a.concat(["lesson_mode"])
         a = a.concat(["scroll_text"])
+        a = a.concat(["confirm"])
         return a
     }
     readonly property var actLabels: {
@@ -125,6 +126,7 @@ PluginPage {
         if (page.rollcallExt) a = a.concat(["触发随机点名", "设置随机点名", "关闭点名窗口"])
         a = a.concat(["课程展示模式"])
         a = a.concat(["全屏播放文字"])
+        a = a.concat(["确认/取消弹窗"])
         return a
     }
     // 全屏播放文字的速度 / 字号档位（与 scroll_text.py 保持一致）
@@ -773,6 +775,17 @@ PluginPage {
                 if (!s1) return "（未填文字）"
                 return "「" + (s1.length > 12 ? s1.slice(0, 12) + "…" : s1) + "」"
             }
+            case "confirm": {
+                var tt = String(t.p1 || "自动化确认")
+                var to = parseInt(t.p4 || "0")
+                var tos = to > 0 ? " " + to + "s" : ""
+                var j1 = parseInt(t.p7 || "0")
+                var j2 = parseInt(t.p8 || "0")
+                var js = ""
+                if (j1 > 0) js += " 是→第" + j1 + "步"
+                if (j2 > 0) js += " 否→第" + j2 + "步"
+                return "「" + (tt.length > 10 ? tt.slice(0, 10) + "…" : tt) + "」" + tos + js
+            }
             default: return ""
         }
     }
@@ -979,6 +992,7 @@ PluginPage {
             case "rollcall_close": return actRollcallCloseComp
             case "lesson_mode": return actLessonModeComp
             case "scroll_text": return actScrollTextComp
+            case "confirm": return actConfirmComp
             case "countdown": return actCountdownComp
             default: return null
         }
@@ -2293,6 +2307,96 @@ PluginPage {
         }
     }
 
+    Component {
+        id: actConfirmComp
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            property var it: null
+            function load(item) {
+                it = item
+                titleF.text = item.p1 || ""
+                bodyF.text = item.p2 || ""
+                okF.text = item.p3 || "确认"
+                toSpin.value = parseInt(item.p4 || "30")
+                cancelF.text = item.p5 || "取消"
+                toOkCheck.checked = String(item.p6 || "").toLowerCase() === "on"
+                okJumpSpin.value = parseInt(item.p7 || "0")
+                cancelJumpSpin.value = parseInt(item.p8 || "0")
+            }
+            TextField {
+                id: titleF
+                Layout.fillWidth: true
+                placeholderText: "弹窗标题（如：眼操时间到了）"
+                onTextChanged: if (it) it.p1 = text
+            }
+            TextField {
+                id: bodyF
+                Layout.fillWidth: true
+                placeholderText: "正文说明（可留空）"
+                onTextChanged: if (it) it.p2 = text
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                TextField {
+                    id: okF
+                    Layout.preferredWidth: 110
+                    placeholderText: "确认按钮"
+                    onTextChanged: if (it) it.p3 = text
+                }
+                TextField {
+                    id: cancelF
+                    Layout.preferredWidth: 110
+                    placeholderText: "取消按钮"
+                    onTextChanged: if (it) it.p5 = text
+                }
+                SpinBox {
+                    id: toSpin
+                    from: 0; to: 3600
+                    Layout.preferredWidth: 120
+                    ToolTip.visible: hovered
+                    ToolTip.text: "超时秒数，0 = 不限时"
+                    onValueModified: if (it) it.p4 = String(value)
+                }
+            }
+            CheckBox {
+                id: toOkCheck
+                text: "超时视为「确认」（不勾 = 超时按取消，跳过剩余行动）"
+                onCheckedChanged: if (it) it.p6 = checked ? "on" : "off"
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Text { text: "确认后跳第"; opacity: 0.75 }
+                SpinBox {
+                    id: okJumpSpin
+                    from: 0; to: 999
+                    Layout.preferredWidth: 110
+                    ToolTip.visible: hovered
+                    ToolTip.text: "0 = 顺序执行下一步；填 N = 直接跳到第 N 步"
+                    onValueModified: if (it) it.p7 = String(value)
+                }
+                Text { text: "步；取消后跳第"; opacity: 0.75 }
+                SpinBox {
+                    id: cancelJumpSpin
+                    from: 0; to: 999
+                    Layout.preferredWidth: 110
+                    ToolTip.visible: hovered
+                    ToolTip.text: "0 = 结束整条行动链；填 N = 跳到第 N 步继续"
+                    onValueModified: if (it) it.p8 = String(value)
+                }
+                Text { text: "步"; opacity: 0.75 }
+                Item { Layout.fillWidth: true }
+            }
+            Text {
+                text: "点确认 / 取消后可以各走一条分支（跳转目标填 0 时：确认=顺序下一步，取消=结束整条链）。适合「眼操时间到了，要切息屏吗？」这类需要等人拍板、且两条路要做不同事的场景。"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                opacity: 0.62
+            }
+        }
+    }
     Component {
         id: actScrollTextComp
         ColumnLayout {
