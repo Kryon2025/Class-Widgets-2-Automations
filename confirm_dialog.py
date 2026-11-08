@@ -164,10 +164,30 @@ class _ConfirmWindow(QWidget):
         self.adjustSize()
         w = max(self.width(), 380)
         self.resize(w, self.height())
-        self.move(geo.center().x() - w // 2,
-                  geo.top() + max(48, int(geo.height() * 0.12)))
+        # 屏幕正中（可用区域内居中）
+        self.move(geo.center().x() - self.width() // 2,
+                  geo.center().y() - self.height() // 2)
         self.raise_()
         self.activateWindow()
+
+    # ── 拖动（按住窗口任意空白处拖动；按钮上的按下不触发）──
+    def mousePressEvent(self, event) -> None:                # noqa: N802
+        if event.button() == Qt.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:                 # noqa: N802
+        if event.buttons() & Qt.LeftButton and getattr(self, "_drag_offset", None) is not None:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:              # noqa: N802
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)
 
     # ── 超时 ──
     def _tick(self) -> None:

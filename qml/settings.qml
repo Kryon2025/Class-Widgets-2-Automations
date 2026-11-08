@@ -2362,35 +2362,43 @@ PluginPage {
             }
             CheckBox {
                 id: toOkCheck
-                text: "超时视为「确认」（不勾 = 超时按取消，跳过剩余行动）"
+                text: "超时视为「确认」"
                 onCheckedChanged: if (it) it.p6 = checked ? "on" : "off"
             }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
-                Text { text: "确认后跳第"; opacity: 0.75 }
+                Text { text: "确认后跳到第"; opacity: 0.75 }
                 SpinBox {
                     id: okJumpSpin
                     from: 0; to: 999
-                    Layout.preferredWidth: 110
+                    Layout.preferredWidth: 96
+                    Layout.minimumWidth: 78
                     ToolTip.visible: hovered
                     ToolTip.text: "0 = 顺序执行下一步；填 N = 直接跳到第 N 步"
                     onValueModified: if (it) it.p7 = String(value)
                 }
-                Text { text: "步；取消后跳第"; opacity: 0.75 }
+                Text { text: "步（0 = 下一步）"; opacity: 0.6 }
+                Item { Layout.fillWidth: true }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Text { text: "取消后跳到第"; opacity: 0.75 }
                 SpinBox {
                     id: cancelJumpSpin
                     from: 0; to: 999
-                    Layout.preferredWidth: 110
+                    Layout.preferredWidth: 96
+                    Layout.minimumWidth: 78
                     ToolTip.visible: hovered
                     ToolTip.text: "0 = 结束整条行动链；填 N = 跳到第 N 步继续"
                     onValueModified: if (it) it.p8 = String(value)
                 }
-                Text { text: "步"; opacity: 0.75 }
+                Text { text: "步（0 = 结束）"; opacity: 0.6 }
                 Item { Layout.fillWidth: true }
             }
             Text {
-                text: "点确认 / 取消后可以各走一条分支（跳转目标填 0 时：确认=顺序下一步，取消=结束整条链）。适合「眼操时间到了，要切息屏吗？」这类需要等人拍板、且两条路要做不同事的场景。"
+                text: "确认 / 取消可各走一条分支：跳转填 0 时，确认 = 顺序下一步、取消 = 结束整条链。适合「眼操时间到了，要切息屏吗」这类需要等人拍板的场景。"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
