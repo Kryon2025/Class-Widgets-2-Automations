@@ -3623,9 +3623,12 @@ PluginPage {
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                     ColumnLayout {
-                        // 用 availableWidth（已扣掉滚动条），不要写死 -14：
-                        // 高分屏/主题下滚动条不是 14 像素，写死就会把右边「移除」按钮挤出画面
-                        width: sheetScroll.availableWidth
+                        // 必须用 width 而不是 availableWidth：
+                        // availableWidth 在本版本 ScrollView 里不会随视口变化刷新（取到 undefined），
+                        // 绑定失效后 ColumnLayout 退回 implicitWidth（= 最宽子项的最小宽度），
+                        // 结果内容只占左侧、右边空出一大片。
+                        width: sheetScroll.width - (sheetScroll.ScrollBar.vertical.visible
+                                                    ? sheetScroll.ScrollBar.vertical.width + 4 : 0)
                         spacing: 12
 
                         Frame {
