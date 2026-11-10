@@ -3556,7 +3556,7 @@ PluginPage {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 22
+                anchors.margins: 14
                 // 四边统一 22：内容铺满整张纸，随窗口等比变大。
                 // （探出的那 6% 交给 ScrollView 的 bottomPadding 处理，不在这里挤内容。）
                 spacing: 12
@@ -3623,12 +3623,15 @@ PluginPage {
                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                     ColumnLayout {
+                        id: sheetContentCol
                         // 必须用 width 而不是 availableWidth：
                         // availableWidth 在本版本 ScrollView 里不会随视口变化刷新（取到 undefined），
                         // 绑定失效后 ColumnLayout 退回 implicitWidth（= 最宽子项的最小宽度），
                         // 结果内容只占左侧、右边空出一大片。
+                        // 滚动条可见时只扣掉它自身的宽度（不要再加额外间隙），
+                        // 这样卡片右边缘正好贴住滚动条，不会多出一条空白。
                         width: sheetScroll.width - (sheetScroll.ScrollBar.vertical.visible
-                                                    ? sheetScroll.ScrollBar.vertical.width + 4 : 0)
+                                                    ? sheetScroll.ScrollBar.vertical.width : 0)
                         spacing: 12
 
                         Frame {
