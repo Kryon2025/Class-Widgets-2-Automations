@@ -3613,25 +3613,26 @@ PluginPage {
                     visible: page.statusText.length > 0
                 }
 
-                ScrollView {
+                // 用 Flickable + contentWidth 而不是 ScrollView：
+                // 本版本 ScrollView 的 availableWidth 取不到有效值（绑定失效后退回 implicitWidth），
+                // 会导致内容列只按「最宽子项」排版、右侧空出一大片。
+                // Flickable 的 contentWidth 显式等于视口宽度，内容必然铺满，滚动条浮在内容上不占位。
+                Flickable {
                     id: sheetScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    bottomPadding: 24          // 底部留一点白，最后一项不贴着卡片边
-                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    contentWidth: width
+                    contentHeight: sheetContentCol.implicitHeight + 24   // 底部留白，最后一项不贴边
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.VerticalFlick
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                     ColumnLayout {
                         id: sheetContentCol
-                        // 必须用 width 而不是 availableWidth：
-                        // availableWidth 在本版本 ScrollView 里不会随视口变化刷新（取到 undefined），
-                        // 绑定失效后 ColumnLayout 退回 implicitWidth（= 最宽子项的最小宽度），
-                        // 结果内容只占左侧、右边空出一大片。
-                        // 滚动条可见时只扣掉它自身的宽度（不要再加额外间隙），
-                        // 这样卡片右边缘正好贴住滚动条，不会多出一条空白。
-                        width: sheetScroll.width - (sheetScroll.ScrollBar.vertical.visible
-                                                    ? sheetScroll.ScrollBar.vertical.width : 0)
+                        // 父级是 Flickable 的 contentItem，contentWidth = Flickable.width，
+                        // 所以这里直接等于视口宽度，内容必然铺满整张纸。
+                        width: parent.width
                         spacing: 12
 
                         Frame {
