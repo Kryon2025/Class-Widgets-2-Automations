@@ -120,6 +120,13 @@ class Plugin(CW2Plugin):
         except Exception as e:
             logger.warning("[automations] 全屏文字模块初始化失败: {}", e)
 
+        # 确认弹窗的 GUI 桥（同上，必须在 GUI 线程建立）
+        try:
+            import confirm_dialog
+            confirm_dialog.init()
+        except Exception as e:
+            logger.warning("[automations] 确认弹窗模块初始化失败: {}", e)
+
         # 检测旧插件是否还在启用：两套引擎并存会让同一条规则触发两次
         try:
             self._old_plugin_on = self._detect_old_plugin()

@@ -118,6 +118,7 @@ A_ROLLCALL_SET = "rollcall_set"       # 设置随机点名配置项：p1 = 键 p
 A_ROLLCALL_CLOSE = "rollcall_close"   # 关闭点名结果窗口
 # 全量展示课程联动（扩展功能，需 com.yersmagit.lessonsdisplayer 插件在场）
 A_LESSON_MODE = "lesson_mode"         # 课程展示模式：p1 = whiteboard / blackboard / exit
+A_CONFIRM = "confirm"              # 确认/取消弹窗：等人拍板，取消则跳过剩余行动
 # 全屏播放文字：p1 = 文字, p2 = 停留时长(秒, 0=自动), p3 = 速度, p4 = 字号
 A_SCROLL_TEXT = "scroll_text"
 
@@ -130,7 +131,7 @@ ACTION_TYPES = (A_RUN, A_APP, A_NOTIFY, A_COUNTDOWN, A_WAIT, A_BROADCAST, A_SET_
                 A_SET_CONFIG, A_LOCK, A_RESTART, A_OPEN_SETTINGS, A_SET_THEME,
                 A_POWER, A_VOLUME, A_MEDIA, A_SYS_NOTIFY,
                 A_ROLLCALL_ROLL, A_ROLLCALL_SET, A_ROLLCALL_CLOSE,
-                A_LESSON_MODE, A_SCROLL_TEXT)
+                A_LESSON_MODE, A_SCROLL_TEXT, A_CONFIRM)
 
 # 闹钟「闹钟铃声」时按顺序找系统自带的声音文件
 ALARM_SOUND_FILES = ("Alarm01.wav", "Alarm02.wav", "Alarm03.wav",
@@ -256,6 +257,8 @@ class RuleEngine(QObject):
         self._reveal_timer = None
         # 倒计时提醒的序号：新的一条顶掉上一条的刷新
         self._cd_seq = 0
+        # confirm 弹窗挂起的行动链：uid -> (actions, next_index, rule)
+        self._pending_confirm: dict[str, tuple] = {}
 
         self._tick_timer = QTimer(self)   # 兜底 tick（若未注册官方任务）
         self._tick_timer.setInterval(1000)
@@ -1208,6 +1211,10 @@ class RuleEngine(QObject):
                 self._do_lesson_mode(action)
             elif atype == A_SCROLL_TEXT:
                 self._do_scroll_text(action)
+            elif atype == A_CONFIRM:
+                # 弹窗等人拍板：链在这里挂起，结果回调里再决定走/跳
+                self._do_confirm(action, actions, index + 1, uid)
+                return                     # 不排下一步，由回调接管
             elif atype == A_WAIT:
                 wait_ms = max(0, int(float(action.get("p1") or 0)) * 1000)
         except Exception as e:
@@ -1793,6 +1800,62 @@ class RuleEngine(QObject):
         fn()
         logger.info("[automations] 课程展示模式 -> {}", mode)
 
+    def _do_confirm(self, a: dict, actions: list, next_index: int,
+                    uid: Optional[str]) -> None:
+        """确认/取消弹窗（行动链的分叉点）。
+
+        参数：p1 标题  p2 正文  p3 确认按钮文字  p4 超时秒数  p5 取消按钮文字
+              p6 超时视为确认(on/off)  p7 确认后跳到第几步  p8 取消后跳到第几步
+
+        跳转索引都是「第几步」（从 1 数，和界面一致）：
+            p7 = 0 → 确认后按顺序执行下一步；p7 = 3 → 确认后从第 3 步继续
+            p8 = 0 → 取消后结束整条行动链；p8 = 5 → 取消后从第 5 步继续
+        跳转目标越界（<=0 或超过链长）时按「结束」处理，避免空转。
+        超时按 p6 决定走确认还是取消那条路。弹窗失败时按取消处理，别把链挂死。
+        """
+        import confirm_dialog
+        uid_key = uid or "?"
+        title = str(a.get("p1") or "").strip() or "自动化确认"
+        body = str(a.get("p2") or "").strip()
+        ok_text = str(a.get("p3") or "").strip() or "确认"
+        timeout_s = int(float(a.get("p4") or 0))
+        cancel_text = str(a.get("p5") or "").strip()
+        timeout_ok = str(a.get("p6") or "").strip().lower() in ("on", "true", "1", "是")
+        jump_ok = int(float(a.get("p7") or 0))       # 1 起；0 = 顺序下一步
+        jump_cancel = int(float(a.get("p8") or 0))   # 1 起；0 = 结束
+
+        def _goto(target_1based: int, default_index: Optional[int]) -> None:
+            """跳到第 N 步（1 起）；target<=0 时走 default_index，None 表示结束。"""
+            self._pending_confirm.pop(uid_key, None)
+            if target_1based > 0:
+                idx = target_1based - 1
+            elif default_index is None:
+                idx = -1
+            else:
+                idx = default_index
+            if idx < 0 or idx >= len(actions):
+                logger.info("[automations] confirm 分支结束（目标 {} / 共 {} 步）",
+                            target_1based or "顺序", len(actions))
+                self._finish_exec()
+                return
+            logger.info("[automations] confirm 分支 → 第 {} 步", idx + 1)
+            self._exec_at(actions, idx, 0, uid)
+
+        def _on_result(ok: bool) -> None:
+            try:
+                if ok:
+                    _goto(jump_ok, next_index)
+                else:
+                    _goto(jump_cancel, None)
+            except Exception as e:                           # noqa: BLE001
+                logger.warning("[automations] confirm 回调失败: {}", e)
+                self._pending_confirm.pop(uid_key, None)
+                self._finish_exec()
+
+        self._pending_confirm[uid_key] = (actions, next_index, uid)
+        confirm_dialog.show_confirm(title, body, ok_text, cancel_text,
+                                    timeout_s, timeout_ok, _on_result)
+
     def _do_scroll_text(self, a: dict) -> None:
         """全屏播放一段文字：超宽则滚动，否则居中停留指定时长。"""
         text = str(a.get("p1") or "").strip()
@@ -2235,6 +2298,13 @@ class RuleEngine(QObject):
             self._tick_timer.stop()
         except Exception:
             pass
+        # 收尾 confirm 弹窗：强制按取消结算，别把挂起的链留在内存里
+        try:
+            import confirm_dialog
+            confirm_dialog.close_confirm(False)
+        except Exception:
+            pass
+        self._pending_confirm.clear()
         # 退出前把「临时恢复显示」收尾，别把锁留在宿主里
         try:
             if getattr(self, "_reveal_active", False):
