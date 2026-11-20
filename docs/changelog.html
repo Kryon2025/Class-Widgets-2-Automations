@@ -36,10 +36,20 @@
   <main class="doc-main">
     <h1>更新记录</h1>
     <div class="meta-bar">
-      <span>当前版本 <b>v3.3.1</b></span>
+      <span>当前版本 <b>v3.4.0</b></span>
       <span>完整日志见仓库 <b>CHANGELOG.md</b></span>
     </div>
     <p>此处仅摘录主要版本节点，完整历史见仓库 <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
+
+    <h2 id="v340">v3.4.0</h2>
+    <ul>
+      <li><strong>「确认/取消弹窗」改为主程序同款 RinUI 弹窗</strong>：带「N 秒后自动按「…」」会话倒计时；</li>
+      <li><strong>确认弹窗支持多个按钮</strong>：最多 6 个，每个按钮可单独设跳转目标、背景色 / 文字色（支持透明度，留空跟随主题），超时自动按哪个按钮可下拉选；旧规则自动兼容；</li>
+      <li>编辑器：<strong>只有行动列表带排头序号</strong>（触发器和规则集不加），确认弹窗的分支跳转按这个序号下拉选；星期选择改为 PillButton；列表 / 应用挑选改为窗口级 RinUI 对话框；</li>
+      <li>设置页开关统一为 RinUI PillButton；快捷管理自动化窗口去掉多余按钮；</li>
+      <li><strong>窗口规则调试</strong>改为 RinUI 窗口：新增「进程权限」（管理员 / 标准权限 / 未知）、「暂停获取」、复制标题 / 进程名、导出文本文件；</li>
+      <li>修复：确认弹窗默认 30 秒不生效、「列表…」点不开、确认弹窗按钮贴边、自定义颜色丢失透明度。</li>
+    </ul>
 
     <h2 id="v331">v3.3.1</h2>
     <ul>
@@ -105,7 +115,8 @@
 
   <aside class="doc-toc">
     <div class="toc-title">本页目录</div>
-    <a href="#v331">v3.3.1</a>
+    <a href="#v340">v3.4.0</a>
+      <a href="#v331">v3.3.1</a>
     <a href="#v330">v3.3.0</a>
     <a href="#v322">v3.2.2</a>
     <a href="#v321">v3.2.1</a>
