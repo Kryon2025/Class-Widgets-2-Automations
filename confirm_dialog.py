@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
-"""确认 / 取消弹窗（RinUI 版）。
+"""确认 / 取消弹窗（RinUI 版，支持多个按钮 + 自定义按钮配色）。
 
-外观照搬主程序「重复打开 CW2」时那个提示窗（全屏透明 + RinUI Dialog + 底部两个整宽按钮），
-并多一行「N 秒后自动…」的会话倒计时，让人一眼看出弹窗还有多久消失。
+外观照搬主程序「重复打开 CW2」时那个提示窗（全屏透明 + RinUI Dialog + 底部整宽按钮），
+并多一行「N 秒后自动按「…」」的会话倒计时。
 
-对引擎暴露的接口不变：
-    init(app)                       在 on_load（GUI 线程）调一次
-    show_confirm(...)               弹窗；on_result(bool) 回调
-    close_confirm(result_ok=False)  外部关闭（插件卸载 / 新弹窗顶掉旧弹窗）
+对引擎暴露的接口：
+    init(app)                                  在 on_load（GUI 线程）调一次
+    show_confirm(title, body, buttons, timeout_s, timeout_index, on_result)
+        buttons: [{"text": ..., "bg": "#rrggbb"|"", "fg": "#rrggbb"|""}, ...]
+        timeout_index: 超时自动按第几个按钮（0 起；-1 = 不自动）
+        on_result(index): 0 起的按钮序号；-1 = 被强制关闭
+    close_confirm(index=-1)                    外部关闭（卸载 / 新弹窗顶掉旧弹窗）
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from loguru import logger
@@ -21,9 +25,9 @@ PLUGIN_DIR = Path(__file__).resolve().parent
 
 
 class _Bridge(QObject):
-    """QML → Python 的结果信号。"""
+    """QML → Python 的按钮序号。"""
 
-    result = Signal(bool)
+    result = Signal(int)
 
 
 _bridge: _Bridge | None = None
@@ -68,19 +72,19 @@ class ConfirmDialog:
             pass
         logger.info("[confirm_dialog] 弹窗窗口已准备好")
 
-    def present(self, title: str, body: str, ok_text: str, cancel_text: str,
-                timeout_s: int, timeout_ok: bool) -> None:
+    def present(self, title: str, body: str, buttons: list,
+                timeout_s: int, timeout_index: int) -> None:
         self.root.setProperty("headline", title)
         self.root.setProperty("bodyText", body)
-        self.root.setProperty("okText", ok_text)
-        self.root.setProperty("cancelText", cancel_text)
+        self.root.setProperty("buttonsJson",
+                              json.dumps(buttons or [], ensure_ascii=False))
         self.root.setProperty("timeoutSeconds", int(timeout_s))
-        self.root.setProperty("timeoutOk", bool(timeout_ok))
+        self.root.setProperty("timeoutIndex", int(timeout_index))
         nonce = int(self.root.property("showNonce") or 0) + 1
         self.root.setProperty("showNonce", nonce)
 
-    def force_close(self, ok: bool) -> None:
-        self.root.setProperty("forceOk", bool(ok))
+    def force_close(self, index: int) -> None:
+        self.root.setProperty("forceIndex", int(index))
         nonce = int(self.root.property("forceNonce") or 0) + 1
         self.root.setProperty("forceNonce", nonce)
 
@@ -96,15 +100,15 @@ def _on_gui(fn) -> None:
         logger.warning("[confirm_dialog] 执行失败: {}", e)
 
 
-def _on_result(ok: bool) -> None:
+def _on_result(index: int) -> None:
     global _callback
     cb = _callback
     _callback = None
     if cb is None:
         return
-    logger.info("[confirm_dialog] 用户选择: {}", "确认" if ok else "取消")
+    logger.info("[confirm_dialog] 按钮选择: {}", index)
     try:
-        cb(bool(ok))
+        cb(int(index))
     except Exception as e:                                # noqa: BLE001
         logger.warning("[confirm_dialog] 结果回调失败: {}", e)
 
@@ -123,37 +127,37 @@ def _ensure_window() -> "ConfirmDialog | None":
         return None
 
 
-def show_confirm(title: str, body: str, ok_text: str, cancel_text: str,
-                 timeout_s: int, timeout_ok: bool, on_result) -> None:
-    """显示确认弹窗（任意线程可调）；已有旧弹窗时旧的按「取消」结算。"""
+def show_confirm(title: str, body: str, buttons: list,
+                 timeout_s: int, timeout_index: int, on_result) -> None:
+    """显示确认弹窗（任意线程可调）；已有旧弹窗时旧的按「-1」结算。"""
 
     def _run() -> None:
         global _callback
         window = _ensure_window()
         if window is None:
             try:
-                on_result(False)                 # 弹不出来就按取消，别把链条挂死
+                on_result(-1)                    # 弹不出来就按关闭，别把链条挂死
             except Exception:                            # noqa: BLE001
                 pass
             return
         if _callback is not None:
             try:
-                _callback(False)
+                _callback(-1)
             except Exception:                            # noqa: BLE001
                 pass
             _callback = None
         _callback = on_result
-        window.present(title, body, ok_text, cancel_text, timeout_s, timeout_ok)
-        logger.info("[confirm_dialog] 弹窗已显示: {}", title)
+        window.present(title, body, buttons, timeout_s, timeout_index)
+        logger.info("[confirm_dialog] 弹窗已显示: {}（{} 个按钮）", title, len(buttons or []))
 
     _on_gui(_run)
 
 
-def close_confirm(result_ok: bool = False) -> None:
-    """外部要求关闭当前弹窗（如插件卸载）：按 result_ok 结算。"""
+def close_confirm(index: int = -1) -> None:
+    """外部要求关闭当前弹窗（如插件卸载）：按 index 结算（-1 = 关闭）。"""
     def _run() -> None:
         if _window is None or _callback is None:
             return
-        _window.force_close(bool(result_ok))
+        _window.force_close(int(index))
 
     _on_gui(_run)

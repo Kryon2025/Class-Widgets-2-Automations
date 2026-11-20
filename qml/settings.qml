@@ -2306,6 +2306,8 @@ PluginPage {
             Layout.fillWidth: true
             spacing: 6
             property var it: null
+            property var buttons: []
+            property bool loading: false
 
             // 行动列表里的「第 N 步」标签（和行动排头的序号一致）
             function stepName(a) {
@@ -2313,36 +2315,110 @@ PluginPage {
                 var li = page.actTypes.indexOf(a.type || "")
                 return li >= 0 ? page.actLabels[li] : (a.type || "")
             }
-            function jumpModel(defaultText) {
+
+            // 跳转下拉：0 = 继续下一步，1 = 结束整条链，2+ = 第 N 步
+            function jumpLabels() {
                 var r = page.cur()
                 var acts = (r && r.actions) || []
-                var m = [defaultText]
+                var m = ["继续下一步", "结束整条链"]
                 for (var i = 0; i < acts.length; i++)
                     m.push("第 " + (i + 1) + " 步 · " + stepName(acts[i]))
                 return m
             }
+            function jumpToIndex(jump) {
+                var j = parseInt(jump)
+                if (isNaN(j)) j = 0
+                if (j === -1) return 0
+                if (j === 0) return 1
+                return j + 1
+            }
+            function indexToJump(idx) {
+                if (idx === 0) return -1
+                if (idx === 1) return 0
+                return idx - 1
+            }
+
+            function save() {
+                if (!it || loading) return
+                it.p9 = JSON.stringify(buttons)
+                // 兼容旧字段：前两个按钮镜像到 p3/p5/p7/p8
+                it.p3 = buttons.length > 0 ? (buttons[0].text || "") : ""
+                it.p5 = buttons.length > 1 ? (buttons[1].text || "") : ""
+                it.p7 = buttons.length > 0 ? String(buttons[0].jump) : ""
+                it.p8 = buttons.length > 1 ? String(buttons[1].jump) : ""
+                it.p10 = String(timeoutCombo.currentIndex + 1)
+                // 旧的「超时视为确认」镜像：超时按第 1 个按钮 = on
+                it.p6 = timeoutCombo.currentIndex === 0 ? "on" : "off"
+            }
 
             function load(item) {
                 it = item
-                // 新建行动时 p3~p8 都是空串：界面显示的默认值必须写回数据里，
-                // 否则「超时 30 秒」只存在于界面上，引擎拿到的 p4 是空 → 弹窗永远「不会自动关闭」。
-                if (!item.p3) item.p3 = "确认"
-                if (item.p4 === undefined || item.p4 === null || item.p4 === "") item.p4 = "30"
-                if (!item.p5) item.p5 = "取消"
-                if (!item.p6) item.p6 = "off"
-                if (item.p7 === undefined || item.p7 === null || item.p7 === "") item.p7 = "0"
-                if (item.p8 === undefined || item.p8 === null || item.p8 === "") item.p8 = "0"
+                loading = true
+                // 旧数据没有 p9：用 p3/p5/p7/p8 拼两个按钮
+                var arr = []
+                var raw = String(item.p9 || "")
+                if (raw) { try { arr = JSON.parse(raw) } catch (e) { arr = [] } }
+                if (!Array.isArray(arr) || arr.length === 0) {
+                    var j7 = parseInt(item.p7 || "0") || 0
+                    arr = [
+                        { text: item.p3 || "确认", jump: (j7 > 0 ? j7 : -1), bg: "", fg: "" },
+                        { text: item.p5 || "取消", jump: parseInt(item.p8 || "0") || 0, bg: "", fg: "" }
+                    ]
+                }
+                var clean = []
+                for (var i = 0; i < arr.length; i++) {
+                    var b = arr[i] || {}
+                    clean.push({
+                        text: String(b.text || ("按钮 " + (i + 1))),
+                        jump: (typeof b.jump === "number" ? b.jump : (parseInt(b.jump || "0") || 0)),
+                        bg: String(b.bg || ""),
+                        fg: String(b.fg || "")
+                    })
+                }
+                buttons = clean
+                // 默认 30 秒要写回数据（和之前的修复一致）
+                if (item.p4 === undefined || item.p4 === null || item.p4 === "")
+                    item.p4 = "30"
                 titleF.text = item.p1 || ""
                 bodyF.text = item.p2 || ""
-                okF.text = item.p3
                 toSpin.value = parseInt(item.p4)
-                cancelF.text = item.p5
-                toOkCheck.checked = String(item.p6).toLowerCase() === "on"
-                var j1 = parseInt(item.p7) || 0
-                okJumpCombo.currentIndex = Math.max(0, Math.min(okJumpCombo.count - 1, j1))
-                var j2 = parseInt(item.p8 || "0") || 0
-                cancelJumpCombo.currentIndex = Math.max(0, Math.min(cancelJumpCombo.count - 1, j2))
+                var ti = parseInt(item.p10 || "0")
+                if (ti >= 1 && ti <= clean.length)
+                    timeoutCombo.currentIndex = ti - 1
+                else {
+                    var legacy = String(item.p6 || "").toLowerCase() === "on" ? 0 : Math.min(1, clean.length - 1)
+                    timeoutCombo.currentIndex = legacy
+                }
+                loading = false
+                save()
             }
+
+            function addButton() {
+                if (buttons.length >= 6) return
+                var arr = buttons.slice()
+                arr.push({ text: "按钮 " + (arr.length + 1), jump: 0, bg: "", fg: "" })
+                buttons = arr
+                save()
+            }
+            function removeButton(i) {
+                if (buttons.length <= 1) return
+                var arr = buttons.slice()
+                arr.splice(i, 1)
+                buttons = arr
+                if (timeoutCombo.currentIndex >= buttons.length)
+                    timeoutCombo.currentIndex = Math.max(0, buttons.length - 1)
+                save()
+            }
+            function updateColor(i, key, value) {
+                if (loading || i < 0 || i >= buttons.length) return
+                var arr = buttons.slice()
+                var b = arr[i]
+                arr[i] = { text: b.text, jump: b.jump, bg: b.bg, fg: b.fg }
+                arr[i][key] = value
+                buttons = arr
+                save()
+            }
+
             TextField {
                 id: titleF
                 Layout.fillWidth: true
@@ -2355,65 +2431,140 @@ PluginPage {
                 placeholderText: "正文说明（可留空）"
                 onTextChanged: if (it) it.p2 = text
             }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
-                TextField {
-                    id: okF
-                    Layout.preferredWidth: 110
-                    placeholderText: "确认按钮"
-                    onTextChanged: if (it) it.p3 = text
-                }
-                TextField {
-                    id: cancelF
-                    Layout.preferredWidth: 110
-                    placeholderText: "取消按钮"
-                    onTextChanged: if (it) it.p5 = text
-                }
+                Text { text: "超时"; opacity: 0.75 }
                 SpinBox {
                     id: toSpin
                     from: 0; to: 3600
-                    Layout.preferredWidth: 120
+                    Layout.preferredWidth: 110
                     ToolTip.visible: hovered
                     ToolTip.text: "超时秒数，0 = 不限时"
                     onValueModified: if (it) it.p4 = String(value)
                 }
-            }
-            CheckBox {
-                id: toOkCheck
-                text: "超时视为「确认」"
-                onCheckedChanged: if (it) it.p6 = checked ? "on" : "off"
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: "确认后"; opacity: 0.75 }
+                Text { text: "秒后自动按"; opacity: 0.75 }
                 ComboBox {
-                    id: okJumpCombo
-                    Layout.fillWidth: true
-                    model: confirmRoot.jumpModel("不跳转（顺序下一步）")
-                    onActivated: if (it) it.p7 = String(index)
+                    id: timeoutCombo
+                    Layout.preferredWidth: 180
+                    model: confirmRoot.buttons.map(function (b) { return b.text || "按钮" })
+                    onActivated: if (it) it.p10 = String(index + 1)
                 }
+                Item { Layout.fillWidth: true }
             }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: "取消后"; opacity: 0.75 }
-                ComboBox {
-                    id: cancelJumpCombo
-                    Layout.fillWidth: true
-                    model: confirmRoot.jumpModel("不跳转（结束整条链）")
-                    onActivated: if (it) it.p8 = String(index)
-                }
-            }
+
             Text {
-                text: "跳转按行动列表排头的序号选（第一项 = 不跳转）；确认 / 取消可各走一条分支。适合「眼操时间到了，要切息屏吗」这类需要等人拍板的场景。"
+                text: "按钮（最多 6 个）；「点击后」按行动列表排头的序号选。背景 / 文字色留空 = 跟随主题。"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
             }
+
+            Repeater {
+                model: confirmRoot.buttons
+
+                delegate: RowLayout {
+                    id: btnRow
+                    Layout.fillWidth: true
+                    spacing: 6
+                    property int rowIndex: index
+
+                    TextField {
+                        Layout.preferredWidth: 130
+                        placeholderText: "按钮文字"
+                        text: modelData.text
+                        onTextEdited: {
+                            var arr = confirmRoot.buttons.slice()
+                            var b = arr[btnRow.rowIndex]
+                            arr[btnRow.rowIndex] = { text: text, jump: b.jump, bg: b.bg, fg: b.fg }
+                            confirmRoot.buttons = arr
+                            confirmRoot.save()
+                        }
+                    }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        model: confirmRoot.jumpLabels()
+                        currentIndex: confirmRoot.jumpToIndex(modelData.jump)
+                        onActivated: {
+                            var arr = confirmRoot.buttons.slice()
+                            var b = arr[btnRow.rowIndex]
+                            arr[btnRow.rowIndex] = {
+                                text: b.text,
+                                jump: confirmRoot.indexToJump(index),
+                                bg: b.bg,
+                                fg: b.fg
+                            }
+                            confirmRoot.buttons = arr
+                            confirmRoot.save()
+                        }
+                    }
+                    DropDownColorPicker {
+                        id: bgPicker
+                        Layout.preferredWidth: 52
+                        property bool ready: false
+                        alphaEnabled: false
+                        Component.onCompleted: {
+                            color = (modelData.bg && String(modelData.bg).length)
+                                ? modelData.bg
+                                : Theme.currentTheme.colors.controlFillColor
+                            ready = true
+                        }
+                        onColorChanged: if (ready && !confirmRoot.loading)
+                            confirmRoot.updateColor(btnRow.rowIndex, "bg", color.toString())
+                    }
+                    DropDownColorPicker {
+                        id: fgPicker
+                        Layout.preferredWidth: 52
+                        property bool ready: false
+                        alphaEnabled: false
+                        Component.onCompleted: {
+                            color = (modelData.fg && String(modelData.fg).length)
+                                ? modelData.fg
+                                : Theme.currentTheme.colors.textColor
+                            ready = true
+                        }
+                        onColorChanged: if (ready && !confirmRoot.loading)
+                            confirmRoot.updateColor(btnRow.rowIndex, "fg", color.toString())
+                    }
+                    Button {
+                        text: "默认色"
+                        implicitWidth: 64
+                        implicitHeight: 30
+                        ToolTip.visible: hovered
+                        ToolTip.text: "清掉这个按钮的自定义背景 / 文字色"
+                        onClicked: {
+                            var arr = confirmRoot.buttons.slice()
+                            var b = arr[btnRow.rowIndex]
+                            arr[btnRow.rowIndex] = { text: b.text, jump: b.jump, bg: "", fg: "" }
+                            confirmRoot.buttons = arr
+                            confirmRoot.save()
+                        }
+                    }
+                    Button {
+                        text: "移除"
+                        implicitWidth: 52
+                        implicitHeight: 30
+                        enabled: confirmRoot.buttons.length > 1
+                        onClicked: confirmRoot.removeButton(btnRow.rowIndex)
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Button {
+                    text: "+ 添加按钮"
+                    implicitHeight: 30
+                    enabled: confirmRoot.buttons.length < 6
+                    onClicked: confirmRoot.addButton()
+                }
+                Item { Layout.fillWidth: true }
+            }
         }
     }
+
     Component {
         id: actScrollTextComp
         ColumnLayout {

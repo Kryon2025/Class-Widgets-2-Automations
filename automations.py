@@ -1804,57 +1804,99 @@ class RuleEngine(QObject):
                     uid: Optional[str]) -> None:
         """确认/取消弹窗（行动链的分叉点）。
 
-        参数：p1 标题  p2 正文  p3 确认按钮文字  p4 超时秒数  p5 取消按钮文字
-              p6 超时视为确认(on/off)  p7 确认后跳到第几步  p8 取消后跳到第几步
+        参数：p1 标题  p2 正文  p4 超时秒数  p10 超时自动按第几个按钮（1 起，空=沿用 p6）
+              p9 按钮列表（JSON）：[{"text": "…", "jump": -1/0/N, "bg": "#rrggbb", "fg": "#rrggbb"}, …]
+              旧字段兼容：p3 确认文字 / p5 取消文字 / p7 确认跳转 / p8 取消跳转 / p6 超时视为确认
 
-        跳转索引都是「第几步」（从 1 数，和界面一致）：
-            p7 = 0 → 确认后按顺序执行下一步；p7 = 3 → 确认后从第 3 步继续
-            p8 = 0 → 取消后结束整条行动链；p8 = 5 → 取消后从第 5 步继续
-        跳转目标越界（<=0 或超过链长）时按「结束」处理，避免空转。
-        超时按 p6 决定走确认还是取消那条路。弹窗失败时按取消处理，别把链挂死。
+        每个按钮的 jump：-1 = 继续下一步，0 = 结束整条链，N = 跳到第 N 步（越界按结束处理）。
+        没有 p9 的旧规则会用 p3/p5/p7/p8 组成两个按钮，超时按 p6 选按钮。
+        弹窗失败时按「取消」处理，别把链挂死。
         """
+        import json as _json
+
         import confirm_dialog
         uid_key = uid or "?"
         title = str(a.get("p1") or "").strip() or "自动化确认"
         body = str(a.get("p2") or "").strip()
-        ok_text = str(a.get("p3") or "").strip() or "确认"
-        timeout_s = int(float(a.get("p4") or 30))   # 缺省 30 秒（与编辑器默认一致）；显式 0 才是不限时
-        cancel_text = str(a.get("p5") or "").strip()
-        timeout_ok = str(a.get("p6") or "").strip().lower() in ("on", "true", "1", "是")
-        jump_ok = int(float(a.get("p7") or 0))       # 1 起；0 = 顺序下一步
-        jump_cancel = int(float(a.get("p8") or 0))   # 1 起；0 = 结束
+        timeout_s = int(float(a.get("p4") or 30))   # 缺省 30 秒；显式 0 才是不限时
 
-        def _goto(target_1based: int, default_index: Optional[int]) -> None:
-            """跳到第 N 步（1 起）；target<=0 时走 default_index，None 表示结束。"""
-            self._pending_confirm.pop(uid_key, None)
-            if target_1based > 0:
-                idx = target_1based - 1
-            elif default_index is None:
-                idx = -1
-            else:
-                idx = default_index
-            if idx < 0 or idx >= len(actions):
-                logger.info("[automations] confirm 分支结束（目标 {} / 共 {} 步）",
-                            target_1based or "顺序", len(actions))
-                self._finish_exec()
-                return
-            logger.info("[automations] confirm 分支 → 第 {} 步", idx + 1)
-            self._exec_at(actions, idx, 0, uid)
-
-        def _on_result(ok: bool) -> None:
+        def _as_int(value, default: int = 0) -> int:
             try:
-                if ok:
-                    _goto(jump_ok, next_index)
+                return int(float(value))
+            except (TypeError, ValueError):
+                return default
+
+        # ── 按钮列表：优先 p9；旧规则按 p3/p5/p7/p8 兼容成两个按钮 ──
+        buttons = []
+        raw = str(a.get("p9") or "").strip()
+        if raw:
+            try:
+                data = _json.loads(raw)
+            except Exception:                                # noqa: BLE001
+                data = []
+            if isinstance(data, list):
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    buttons.append({
+                        "text": str(item.get("text") or "").strip() or "按钮",
+                        "jump": _as_int(item.get("jump"), 0),
+                        "bg": str(item.get("bg") or "").strip(),
+                        "fg": str(item.get("fg") or "").strip(),
+                    })
+        if not buttons:
+            jump_ok = _as_int(a.get("p7") or 0, 0)
+            buttons = [
+                {"text": str(a.get("p3") or "").strip() or "确认",
+                 "jump": jump_ok if jump_ok > 0 else -1, "bg": "", "fg": ""},
+                {"text": str(a.get("p5") or "").strip() or "取消",
+                 "jump": _as_int(a.get("p8") or 0, 0), "bg": "", "fg": ""},
+            ]
+
+        # ── 超时自动按哪个按钮（1 起；0 = 不自动按）──
+        timeout_index = 0
+        raw_ti = str(a.get("p10") or "").strip()
+        if raw_ti:
+            timeout_index = _as_int(raw_ti, 0)
+        else:
+            timeout_ok = str(a.get("p6") or "").strip().lower() in ("on", "true", "1", "是")
+            timeout_index = 1 if timeout_ok else 2
+        if timeout_index < 1 or timeout_index > len(buttons):
+            timeout_index = 0
+
+        def _on_result(idx) -> None:
+            try:
+                self._pending_confirm.pop(uid_key, None)
+                if idx is None or idx < 0 or idx >= len(buttons):
+                    logger.info("[automations] confirm 关闭，结束行动链")
+                    self._finish_exec()
+                    return
+                btn = buttons[idx]
+                jump = int(btn.get("jump") or 0)
+                if jump > 0:
+                    target = jump - 1
+                elif jump == -1:
+                    target = next_index
                 else:
-                    _goto(jump_cancel, None)
+                    target = -1
+                if target < 0 or target >= len(actions):
+                    logger.info("[automations] confirm「{}」→ 结束（跳转 {} / 共 {} 步）",
+                                btn["text"], jump, len(actions))
+                    self._finish_exec()
+                    return
+                logger.info("[automations] confirm「{}」→ 第 {} 步", btn["text"], target + 1)
+                self._exec_at(actions, target, 0, uid)
             except Exception as e:                           # noqa: BLE001
                 logger.warning("[automations] confirm 回调失败: {}", e)
                 self._pending_confirm.pop(uid_key, None)
                 self._finish_exec()
 
         self._pending_confirm[uid_key] = (actions, next_index, uid)
-        confirm_dialog.show_confirm(title, body, ok_text, cancel_text,
-                                    timeout_s, timeout_ok, _on_result)
+        logger.info("[automations] confirm：{} 个按钮，超时 {} 秒（自动按第 {} 个）",
+                    len(buttons), timeout_s, timeout_index)
+        confirm_dialog.show_confirm(title, body, buttons, timeout_s,
+                                    (timeout_index - 1) if timeout_index > 0 else -1,
+                                    _on_result)
 
     def _do_scroll_text(self, a: dict) -> None:
         """全屏播放一段文字：超宽则滚动，否则居中停留指定时长。"""
@@ -2301,7 +2343,7 @@ class RuleEngine(QObject):
         # 收尾 confirm 弹窗：强制按取消结算，别把挂起的链留在内存里
         try:
             import confirm_dialog
-            confirm_dialog.close_confirm(False)
+            confirm_dialog.close_confirm(-1)
         except Exception:
             pass
         self._pending_confirm.clear()
