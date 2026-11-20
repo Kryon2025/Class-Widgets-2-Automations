@@ -2555,6 +2555,7 @@ PluginPage {
             }
             Button {
                 text: "列表…"
+                visible: meta && meta.kind === "theme"
                 implicitWidth: 68
                 implicitHeight: 30
                 onClicked: page.openListPick(themeCombo, page.themeNames, "选择主题")
@@ -2568,6 +2569,7 @@ PluginPage {
             }
             Button {
                 text: "列表…"
+                visible: meta && meta.kind === "anchor"
                 implicitWidth: 68
                 implicitHeight: 30
                 onClicked: page.openListPick(anchorCombo, page.anchorLabels, "选择锚点")
@@ -2602,6 +2604,7 @@ PluginPage {
             }
             Button {
                 text: "列表…"
+                visible: meta && meta.kind === "preset"
                 implicitWidth: 68
                 implicitHeight: 30
                 onClicked: page.openListPick(presetCombo, page.presets, "选择预设方案")
@@ -4065,23 +4068,21 @@ PluginPage {
 
 
     /*!
-        应用挑选弹窗。
+        选择应用（RinUI Dialog）
 
-        为什么另做一个，而不是给 ComboBox 的下拉加滚动条：
-        那要重写 Qt 自己维护的 popup 内部逻辑，实测会把列表搞成「只显示一项」。
-        这里用与编辑面板同一套、已验证稳定的本页内覆盖层，
-        列表与滚动条都是我们自己的：滚动条常驻且可以直接拖（拖比手指滑快得多）。
+        以前是「本页覆盖层 Item」：编辑面板挂到窗口根节点之后，它会被面板整个盖住，
+        点了「列表…」看起来像没反应。改成 Dialog（Popup 走窗口 overlay，天然在最上层），
+        标题栏 / 遮罩 / 层级都和主程序自己的弹窗一致。
     */
-    Item {
-        id: appPicker
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: (page.Window && page.Window.height ? page.Window.height : 640) + 160
-        z: 1100
-        visible: page.appPicking
+    Dialog {
+        id: appPickDialog
+        modal: true
+        title: "选择应用"
+        width: Math.min(560, Math.max(380, (page.Window && page.Window.width ? page.Window.width : 900) * 0.6))
+        height: Math.min(520, Math.max(340, (page.Window && page.Window.height ? page.Window.height : 700) * 0.72))
+        closePolicy: Popup.NoAutoClose
 
-        onVisibleChanged: if (visible) {
+        onOpened: {
             appPickSearch.text = ""
             // 读一次缓存即可：getCachedAppsJson() 内部在缓存为空时会触发
             // app_index.prefetch_async()（后台线程枚举，不阻塞图形线程）。
@@ -4089,6 +4090,8 @@ PluginPage {
             appPickList.refresh()
             appPoll.restart()          // 抓到之前每隔 800ms 自动重读一次
         }
+        visible: page.appPicking
+        onClosed: if (page.appPicking) page.appPicking = false
 
         // 后台枚举完成后自动把列表补上，用户不需要点任何按钮
         Timer {
@@ -4106,238 +4109,203 @@ PluginPage {
             }
         }
 
-        Rectangle { anchors.fill: parent; color: Theme.currentTheme.colors.backgroundSmokeColor }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
 
-        Rectangle {
-            id: pickSheet
-            x: 30
-            width: parent.width - 60
-            height: Math.min(parent.height - 80, 480)
-            anchors.verticalCenter: parent.verticalCenter
-            radius: page.cardRadius
-            color: Theme.currentTheme.colors.backgroundAcrylicColor
-            border.width: Theme.currentTheme.appearance.borderWidth
-            border.color: Theme.currentTheme.colors.windowBorderColor
+            TextField {
+                id: appPickSearch
+                Layout.fillWidth: true
+                placeholderText: "输入关键字筛选（例如 chrome、微信、记事本）"
+                onTextChanged: appPickList.refresh()
+            }
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 10
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 6
+                color: "transparent"
+                border.width: Theme.currentTheme.appearance.borderWidth
+                border.color: Theme.currentTheme.colors.windowBorderColor
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Text { typography: Typography.BodyStrong; text: "选择应用" }
-                    Item { Layout.fillWidth: true }
-                    Button { text: "关闭"; onClicked: page.appPicking = false }
-                }
+                ListView {
+                    id: appPickList
+                    anchors.fill: parent
+                    anchors.rightMargin: 14          // 给滚动条留位置
+                    clip: true
+                    spacing: 2
+                    boundsBehavior: Flickable.StopAtBounds
+                    currentIndex: -1
 
-                TextField {
-                    id: appPickSearch
-                    Layout.fillWidth: true
-                    placeholderText: "输入关键字筛选（例如 chrome、微信、记事本）"
-                    onTextChanged: appPickList.refresh()
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 6
-                    color: "transparent"
-                    border.width: Theme.currentTheme.appearance.borderWidth
-                    border.color: Theme.currentTheme.colors.windowBorderColor
-
-                    ListView {
-                        id: appPickList
-                        anchors.fill: parent
-                        anchors.rightMargin: 14          // 给滚动条留位置
-                        clip: true
-                        spacing: 2
-                        boundsBehavior: Flickable.StopAtBounds
-                        currentIndex: -1
-
-                        function refresh() {
-                            var kw = String(appPickSearch.text || "").toLowerCase()
-                            var out = []
-                            for (var i = 0; i < page.appLabels.length; i++) {
-                                if (!kw || String(page.appLabels[i]).toLowerCase().indexOf(kw) >= 0)
-                                    out.push(i)
-                            }
-                            appPickList.model = out
+                    function refresh() {
+                        var kw = String(appPickSearch.text || "").toLowerCase()
+                        var out = []
+                        for (var i = 0; i < page.appLabels.length; i++) {
+                            if (!kw || String(page.appLabels[i]).toLowerCase().indexOf(kw) >= 0)
+                                out.push(i)
                         }
-
-                        Text {
-                            anchors.centerIn: parent
-                            width: parent.width - 40
-                            wrapMode: Text.Wrap
-                            horizontalAlignment: Text.AlignHCenter
-                            visible: appPickList.count === 0
-                            text: page.appLabels.length === 0
-                                  ? "正在获取应用列表…（首次约 3 秒，后台完成会自动出现；不用点任何按钮）"
-                                  : "没有匹配的应用，换个关键字试试。"
-                        }
-
-                        delegate: ItemDelegate {
-                            width: appPickList.width
-                            text: page.appLabels[modelData]
-                            onClicked: {
-                                appPickList.currentIndex = index
-                                page.appPickValue = page.appTargets[modelData]
-                            }
-                        }
-
-                        // 常驻、可直接拖的右侧滚动条
-                        ScrollBar.vertical: ScrollBar {
-                            policy: ScrollBar.AlwaysOn
-                            width: 12
-                            minimumSize: 0.08
-                        }
+                        appPickList.model = out
                     }
-                }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
                     Text {
-                        Layout.fillWidth: true
-                        elide: Text.ElideMiddle
-                        text: page.appPickValue ? ("已选：" + page.appPickValue) : "未选择（在上面的列表里点一项）"
+                        anchors.centerIn: parent
+                        width: parent.width - 40
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        visible: appPickList.count === 0
+                        text: page.appLabels.length === 0
+                              ? "正在获取应用列表…（首次约 3 秒，后台完成会自动出现；不用点任何按钮）"
+                              : "没有匹配的应用，换个关键字试试。"
                     }
-                    Button {
-                        text: "重新抓取"
+
+                    delegate: ItemDelegate {
+                        width: appPickList.width
+                        text: page.appLabels[modelData]
                         onClicked: {
-                            if (backend) backend.prefetchAppsAsync()
-                            page.appLabels = []
-                            appPickList.refresh()
-                            appPoll.restart()
+                            appPickList.currentIndex = index
+                            page.appPickValue = page.appTargets[modelData]
                         }
                     }
-                    Button {
-                        text: "确定"
-                        highlighted: true
-                        enabled: !!page.appPickValue
-                        onClicked: page.acceptAppPick()
+
+                    // 常驻、可直接拖的右侧滚动条
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AlwaysOn
+                        width: 12
+                        minimumSize: 0.08
                     }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text {
+                    Layout.fillWidth: true
+                    elide: Text.ElideMiddle
+                    text: page.appPickValue ? ("已选：" + page.appPickValue) : "未选择（在上面的列表里点一项）"
+                }
+                Button {
+                    text: "重新抓取"
+                    onClicked: {
+                        if (backend) backend.prefetchAppsAsync()
+                        page.appLabels = []
+                        appPickList.refresh()
+                        appPoll.restart()
+                    }
+                }
+                Button {
+                    text: "取消"
+                    onClicked: page.appPicking = false
+                }
+                Button {
+                    text: "确定"
+                    highlighted: true
+                    enabled: !!page.appPickValue
+                    onClicked: page.acceptAppPick()
                 }
             }
         }
     }
 
-    /* 通用列表挑选弹窗（科目 / 教师 / 主题 / 预设 / 配置项 …）
-       与「选择应用」同一套本页覆盖层：列表与滚动条都是本页自己的，
-       滚动条常驻、可以直接拖，不碰 Qt 自己维护的 ComboBox popup。 */
-    Item {
-        id: listPicker
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: (page.Window && page.Window.height ? page.Window.height : 640) + 160
-        z: 1150
+    /* 通用列表挑选（科目 / 教师 / 主题 / 预设 / 配置项 …）：RinUI Dialog
+
+       同样从「本页覆盖层 Item」改成 Dialog：Popup 在窗口 overlay 上，
+       不会被编辑面板盖住；标题栏、遮罩、按钮都跟主程序弹窗一致。 */
+    Dialog {
+        id: listPickDialog
+        modal: true
+        title: page.listPickTitle
+        width: Math.min(560, Math.max(380, (page.Window && page.Window.width ? page.Window.width : 900) * 0.6))
+        height: Math.min(520, Math.max(340, (page.Window && page.Window.height ? page.Window.height : 700) * 0.72))
+        closePolicy: Popup.NoAutoClose
+
         visible: page.listPicking
+        onClosed: if (page.listPicking) page.listPicking = false
 
-        Rectangle { anchors.fill: parent; color: Theme.currentTheme.colors.backgroundSmokeColor }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
 
-        Rectangle {
-            id: listPickSheet
-            x: 30
-            width: parent.width - 60
-            height: Math.min(parent.height - 80, 460)
-            anchors.verticalCenter: parent.verticalCenter
-            radius: page.cardRadius
-            color: Theme.currentTheme.colors.backgroundAcrylicColor
-            border.width: Theme.currentTheme.appearance.borderWidth
-            border.color: Theme.currentTheme.colors.windowBorderColor
+            TextField {
+                id: listPickSearch
+                Layout.fillWidth: true
+                placeholderText: "输入关键字筛选"
+                onTextChanged: listPickFilter.refresh()
+            }
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 10
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 6
+                color: "transparent"
+                border.width: Theme.currentTheme.appearance.borderWidth
+                border.color: Theme.currentTheme.colors.windowBorderColor
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Text { typography: Typography.BodyStrong; text: page.listPickTitle }
-                    Item { Layout.fillWidth: true }
-                    Button { text: "关闭"; onClicked: page.listPicking = false }
-                }
+                ListView {
+                    id: listPickFilter
+                    anchors.fill: parent
+                    anchors.rightMargin: 14          // 给滚动条留位置
+                    clip: true
+                    spacing: 2
+                    boundsBehavior: Flickable.StopAtBounds
 
-                TextField {
-                    id: listPickSearch
-                    Layout.fillWidth: true
-                    placeholderText: "输入关键字筛选"
-                    onTextChanged: listPickFilter.refresh()
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 6
-                    color: "transparent"
-                    border.width: Theme.currentTheme.appearance.borderWidth
-                    border.color: Theme.currentTheme.colors.windowBorderColor
-
-                    ListView {
-                        id: listPickFilter
-                        anchors.fill: parent
-                        anchors.rightMargin: 14          // 给滚动条留位置
-                        clip: true
-                        spacing: 2
-                        boundsBehavior: Flickable.StopAtBounds
-
-                        function refresh() {
-                            var kw = String(listPickSearch.text || "").toLowerCase()
-                            var out = []
-                            for (var i = 0; i < page.listPickLabels.length; i++) {
-                                if (!kw || String(page.listPickLabels[i]).toLowerCase().indexOf(kw) >= 0)
-                                    out.push(i)
-                            }
-                            listPickFilter.model = out
+                    function refresh() {
+                        var kw = String(listPickSearch.text || "").toLowerCase()
+                        var out = []
+                        for (var i = 0; i < page.listPickLabels.length; i++) {
+                            if (!kw || String(page.listPickLabels[i]).toLowerCase().indexOf(kw) >= 0)
+                                out.push(i)
                         }
-
-                        Text {
-                            anchors.centerIn: parent
-                            width: parent.width - 40
-                            wrapMode: Text.Wrap
-                            horizontalAlignment: Text.AlignHCenter
-                            visible: listPickFilter.count === 0
-                            text: page.listPickLabels.length === 0
-                                  ? "这个列表现在是空的（主程序里还没有对应内容）。"
-                                  : "没有匹配的项，换个关键字试试。"
-                        }
-
-                        delegate: ItemDelegate {
-                            width: listPickFilter.width
-                            text: page.listPickLabels[modelData]
-                            onClicked: {
-                                page.listPickIndex = modelData
-                                page.listPickValue = String(page.listPickLabels[modelData])
-                            }
-                        }
-
-                        ScrollBar.vertical: ScrollBar {
-                            policy: ScrollBar.AlwaysOn
-                            width: 12
-                            minimumSize: 0.08
-                        }
+                        listPickFilter.model = out
                     }
-                }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
                     Text {
-                        Layout.fillWidth: true
-                        elide: Text.ElideMiddle
-                        text: page.listPickValue
-                              ? ("已选：" + page.listPickValue)
-                              : "未选择（在上面的列表里点一项）"
+                        anchors.centerIn: parent
+                        width: parent.width - 40
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        visible: listPickFilter.count === 0
+                        text: page.listPickLabels.length === 0
+                              ? "这个列表现在是空的（主程序里还没有对应内容）。"
+                              : "没有匹配的项，换个关键字试试。"
                     }
-                    Button {
-                        text: "确定"
-                        highlighted: true
-                        enabled: page.listPickIndex >= 0
-                        onClicked: page.acceptListPick(page.listPickIndex)
+
+                    delegate: ItemDelegate {
+                        width: listPickFilter.width
+                        text: page.listPickLabels[modelData]
+                        onClicked: {
+                            page.listPickIndex = modelData
+                            page.listPickValue = String(page.listPickLabels[modelData])
+                        }
                     }
+
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AlwaysOn
+                        width: 12
+                        minimumSize: 0.08
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text {
+                    Layout.fillWidth: true
+                    elide: Text.ElideMiddle
+                    text: page.listPickValue
+                          ? ("已选：" + page.listPickValue)
+                          : "未选择（在上面的列表里点一项）"
+                }
+                Button {
+                    text: "取消"
+                    onClicked: page.listPicking = false
+                }
+                Button {
+                    text: "确定"
+                    highlighted: true
+                    enabled: page.listPickIndex >= 0
+                    onClicked: page.acceptListPick(page.listPickIndex)
                 }
             }
         }
