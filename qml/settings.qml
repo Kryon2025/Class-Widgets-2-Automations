@@ -3761,12 +3761,6 @@ PluginPage {
                                                 RowLayout {
                                                     Layout.fillWidth: true
                                                     spacing: 6
-                                                    Text {
-                                                        text: (trigRow.idx + 1) + "."
-                                                        Layout.preferredWidth: 16
-                                                        Layout.alignment: Qt.AlignVCenter
-                                                        opacity: 0.6
-                                                    }
                                                     ComboBox {
                                                         id: trigType
                                                         Layout.fillWidth: true
@@ -3876,7 +3870,7 @@ PluginPage {
                                                         spacing: 8
                                                         Text {
                                                             typography: Typography.BodyStrong
-                                                            text: "规则集 " + (rsRow.idx + 1)
+                                                            text: "规则集"
                                                             height: 32
                                                             verticalAlignment: Text.AlignVCenter
                                                         }
