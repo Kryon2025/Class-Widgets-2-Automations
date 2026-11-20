@@ -1818,7 +1818,7 @@ class RuleEngine(QObject):
         title = str(a.get("p1") or "").strip() or "自动化确认"
         body = str(a.get("p2") or "").strip()
         ok_text = str(a.get("p3") or "").strip() or "确认"
-        timeout_s = int(float(a.get("p4") or 0))
+        timeout_s = int(float(a.get("p4") or 30))   # 缺省 30 秒（与编辑器默认一致）；显式 0 才是不限时
         cancel_text = str(a.get("p5") or "").strip()
         timeout_ok = str(a.get("p6") or "").strip().lower() in ("on", "true", "1", "是")
         jump_ok = int(float(a.get("p7") or 0))       # 1 起；0 = 顺序下一步

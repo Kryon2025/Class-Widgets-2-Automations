@@ -2324,13 +2324,21 @@ PluginPage {
 
             function load(item) {
                 it = item
+                // 新建行动时 p3~p8 都是空串：界面显示的默认值必须写回数据里，
+                // 否则「超时 30 秒」只存在于界面上，引擎拿到的 p4 是空 → 弹窗永远「不会自动关闭」。
+                if (!item.p3) item.p3 = "确认"
+                if (item.p4 === undefined || item.p4 === null || item.p4 === "") item.p4 = "30"
+                if (!item.p5) item.p5 = "取消"
+                if (!item.p6) item.p6 = "off"
+                if (item.p7 === undefined || item.p7 === null || item.p7 === "") item.p7 = "0"
+                if (item.p8 === undefined || item.p8 === null || item.p8 === "") item.p8 = "0"
                 titleF.text = item.p1 || ""
                 bodyF.text = item.p2 || ""
-                okF.text = item.p3 || "确认"
-                toSpin.value = parseInt(item.p4 || "30")
-                cancelF.text = item.p5 || "取消"
-                toOkCheck.checked = String(item.p6 || "").toLowerCase() === "on"
-                var j1 = parseInt(item.p7 || "0") || 0
+                okF.text = item.p3
+                toSpin.value = parseInt(item.p4)
+                cancelF.text = item.p5
+                toOkCheck.checked = String(item.p6).toLowerCase() === "on"
+                var j1 = parseInt(item.p7) || 0
                 okJumpCombo.currentIndex = Math.max(0, Math.min(okJumpCombo.count - 1, j1))
                 var j2 = parseInt(item.p8 || "0") || 0
                 cancelJumpCombo.currentIndex = Math.max(0, Math.min(cancelJumpCombo.count - 1, j2))
