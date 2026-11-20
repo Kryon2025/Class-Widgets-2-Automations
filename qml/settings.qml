@@ -2455,7 +2455,7 @@ PluginPage {
             }
 
             Text {
-                text: "按钮（最多 6 个）；「点击后」按行动列表排头的序号选。背景 / 文字色留空 = 跟随主题。"
+                text: "按钮（最多 6 个）；「点击后」按行动列表排头的序号选。背景 / 文字色留空 = 跟随主题，颜色支持透明度。"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
@@ -2503,11 +2503,15 @@ PluginPage {
                         id: bgPicker
                         Layout.preferredWidth: 52
                         property bool ready: false
-                        alphaEnabled: false
+                        // 保留透明感：颜色带 alpha 存储（#AARRGGBB），初始值就是主题的半透明底色
+                        alphaEnabled: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: "背景色（可调透明度，留空跟随主题）"
                         Component.onCompleted: {
+                            // 第一次选色时保持半透明（0.55 alpha），选出来的按钮仍然有透明感
                             color = (modelData.bg && String(modelData.bg).length)
                                 ? modelData.bg
-                                : Theme.currentTheme.colors.controlFillColor
+                                : Qt.alpha(Theme.currentTheme.colors.primaryColor, 0.55)
                             ready = true
                         }
                         onColorChanged: if (ready && !confirmRoot.loading)
@@ -2517,7 +2521,9 @@ PluginPage {
                         id: fgPicker
                         Layout.preferredWidth: 52
                         property bool ready: false
-                        alphaEnabled: false
+                        alphaEnabled: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: "文字色（可调透明度，留空跟随主题）"
                         Component.onCompleted: {
                             color = (modelData.fg && String(modelData.fg).length)
                                 ? modelData.fg
