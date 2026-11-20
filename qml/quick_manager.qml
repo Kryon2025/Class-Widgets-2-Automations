@@ -49,14 +49,6 @@ Window {
                 text: qsTr("快捷管理自动化")
                 Layout.fillWidth: true
             }
-            Button {
-                text: qsTr("刷新")
-                onClicked: root.reload()
-            }
-            Button {
-                text: qsTr("关闭")
-                onClicked: root.close()
-            }
         }
 
         Text {
@@ -91,18 +83,18 @@ Window {
                 RowLayout {
                     spacing: 14
 
-                    CheckBox {
+                    PillButton {
                         text: qsTr("恢复")
                         checked: modelData.revert
-                        onToggled: {
+                        onClicked: {
                             QuickRuleBridge.setRule(modelData.uid, !!modelData.enabled, checked)
                             root.reload()
                         }
                     }
-                    CheckBox {
+                    PillButton {
                         text: qsTr("启用")
                         checked: modelData.enabled
-                        onToggled: {
+                        onClicked: {
                             QuickRuleBridge.setRule(modelData.uid, checked, !!modelData.revert)
                             root.reload()
                         }

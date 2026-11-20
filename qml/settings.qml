@@ -1087,10 +1087,10 @@ PluginPage {
                     WeekdayPicker { id: weekBox }
                 }
             }
-            Switch {
+            PillButton {
                 id: skipSw
-                text: "自动跳过非上课日（当天课表没有课程时不触发）"
-                onToggled: if (it) it.p4 = (checked ? "1" : "")
+                text: "跳过非上课日"
+                onClicked: if (it) it.p4 = (checked ? "1" : "")
             }
         }
     }
@@ -1191,10 +1191,10 @@ PluginPage {
                     }
                 }
             }
-            Switch {
+            PillButton {
                 id: alarmSkip
-                text: "自动跳过非上课日（当天课表没有课程时不响）"
-                onToggled: if (it) it.p4 = (checked ? "1" : "")
+                text: "跳过非上课日"
+                onClicked: if (it) it.p4 = (checked ? "1" : "")
             }
             Text {
                 text: "到点会弹出「系统」级通知（标题 = 自动化名称）并响铃；不需要另外添加行动。"
@@ -1888,11 +1888,11 @@ PluginPage {
                 model: page.rollcallLabels
                 onActivated: write()
             }
-            Text { text: "是" }
-            Switch {
+            PillButton {
                 id: rrBool
+                text: "是"
                 visible: isBoolKey()
-                onToggled: write()
+                onClicked: write()
             }
             SpinBox {
                 id: rrNum
@@ -2078,23 +2078,15 @@ PluginPage {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 6
-                    Switch {
+                    PillButton {
                         id: seqSw
-                        text: "显示完后执行下一步"
-                        // 去掉 loading 守卫：loading 一旦卡死会让开关永久失效（已实际踩到）；
-                        // load() 里赋值时写回同一值，是幂等的
-                        onToggled: {
-                            console.log("[automations] seqSw toggled it=" + (!!it) + " checked=" + checked)
-                            if (it) it.p5 = (checked ? "1" : "0")
-                        }
+                        text: "播完再走"
+                        onClicked: if (it) it.p5 = (checked ? "1" : "0")
                     }
-                    Switch {
+                    PillButton {
                         id: revealSw
-                        text: "在隐藏状态下恢复显示"
-                        onToggled: {
-                            console.log("[automations] revealSw toggled it=" + (!!it) + " checked=" + checked)
-                            if (it) it.p6 = (checked ? "1" : "0")
-                        }
+                        text: "隐藏时恢复显示"
+                        onClicked: if (it) it.p6 = (checked ? "1" : "0")
                     }
                     Item { Layout.fillWidth: true }
                 }
@@ -2237,11 +2229,11 @@ PluginPage {
                 model: page.rollcallLabels
                 onActivated: write()
             }
-            Switch {
+            PillButton {
                 id: rcBool
                 text: "开"
                 visible: isBoolKey()
-                onToggled: write()
+                onClicked: write()
             }
             SpinBox {
                 id: rcNum
@@ -2427,11 +2419,11 @@ PluginPage {
                 implicitHeight: 30
                 onClicked: page.openListPick(keyCombo, page.keyLabels, "选择配置项")
             }
-            Switch {
+            PillButton {
                 id: boolSw
                 visible: meta && meta.kind === "bool"
                 text: "开"
-                onToggled: if (it) it.p2 = checked ? "true" : "false"
+                onClicked: if (it) it.p2 = checked ? "true" : "false"
             }
             ComboBox {
                 id: themeCombo
@@ -3000,10 +2992,10 @@ PluginPage {
                     WeekdayPicker { id: weekBox; field: "p3" }
                 }
             }
-            Switch {
+            PillButton {
                 id: skipSw
-                text: "自动跳过非上课日（当天课表没有课程时不触发）"
-                onToggled: if (it) it.p4 = (checked ? "1" : "")
+                text: "跳过非上课日"
+                onClicked: if (it) it.p4 = (checked ? "1" : "")
             }
         }
     }
@@ -3089,10 +3081,10 @@ PluginPage {
                     onActivated: if (it) it.p4 = page.levelValues[index]
                 }
             }
-            Switch {
+            PillButton {
                 id: revealSw
-                text: "隐藏小组件时临时恢复显示"
-                onToggled: if (it) it.p5 = (checked ? "1" : "")
+                text: "隐藏时恢复显示"
+                onClicked: if (it) it.p5 = (checked ? "1" : "")
             }
         }
     }
@@ -3183,7 +3175,7 @@ PluginPage {
                 description: "显示「发系统通知 / 收到系统通知时 / 系统通知条件」"
                 showDivider: true
 
-                action: Switch {
+                action: PillButton {
                     id: sysNotifySwitch
                     checked: page.sysNotifyExt
                     enabled: backend && backend.setSysNotifyExtEnabled
@@ -3204,7 +3196,7 @@ PluginPage {
                              : "未检测到随机点名插件（com.rollcall），开启后相关项也不会出现"
                 showDivider: false
 
-                action: Switch {
+                action: PillButton {
                     id: rollcallSwitch
                     checked: page.rollcallExt
                     enabled: backend && backend.setRollcallExtEnabled
@@ -3295,7 +3287,7 @@ PluginPage {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.alignment: Qt.AlignTop
-                            Layout.bottomMargin: 26
+                            Layout.bottomMargin: 44
                             typography: Typography.Caption
                             opacity: 0.75
                             text: page.cardDesc(ruleCard.ruleObj)
@@ -3306,13 +3298,14 @@ PluginPage {
                         }
                     }
 
-                    Switch {
+                    PillButton {
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         anchors.rightMargin: 10
                         anchors.bottomMargin: 6
+                        text: "启用"
                         checked: !!(ruleCard.ruleObj && ruleCard.ruleObj.enabled)
-                        onToggled: page.setRuleEnabled(index, checked)
+                        onClicked: page.setRuleEnabled(index, checked)
                     }
                 }
             }
@@ -3569,8 +3562,8 @@ PluginPage {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 16
-                                        Switch { id: enabledSwitch; text: "启用"; onToggled: page.commit("enabled", checked) }
-                                        Switch { id: revertSwitch; text: "恢复"; onToggled: page.commit("revert", checked) }
+                                        PillButton { id: enabledSwitch; text: "启用"; onClicked: page.commit("enabled", checked) }
+                                        PillButton { id: revertSwitch; text: "恢复"; onClicked: page.commit("revert", checked) }
                                         Item { Layout.fillWidth: true }
                                     }
                                 }
@@ -3742,10 +3735,10 @@ PluginPage {
                                                             height: 32
                                                             verticalAlignment: Text.AlignVCenter
                                                         }
-                                                        Switch {
+                                                        PillButton {
                                                             id: rsEnabled
                                                             text: "启用"
-                                                            onToggled: { var o = rsRow.rsArr(); if (o) o.enabled = checked }
+                                                            onClicked: { var o = rsRow.rsArr(); if (o) o.enabled = checked }
                                                         }
                                                         ComboBox {
                                                             id: rsModeC
@@ -3753,10 +3746,10 @@ PluginPage {
                                                             model: ["全部满足", "任一满足"]
                                                             onActivated: { var o = rsRow.rsArr(); if (o) o.mode = (index === 1 ? "any" : "all") }
                                                         }
-                                                        Switch {
+                                                        PillButton {
                                                             id: rsReversed
                                                             text: "取反"
-                                                            onToggled: { var o = rsRow.rsArr(); if (o) o.reversed = checked }
+                                                            onClicked: { var o = rsRow.rsArr(); if (o) o.reversed = checked }
                                                         }
                                                         Button {
                                                             text: "移除该规则集"
@@ -3813,10 +3806,10 @@ PluginPage {
                                                                     }
                                                                 }
                                                                 Item { Layout.fillWidth: true }
-                                                                Switch {
+                                                                PillButton {
                                                                     id: revSw
                                                                     text: "取反"
-                                                                    onToggled: if (obj) obj.reversed = checked
+                                                                    onClicked: if (obj) obj.reversed = checked
                                                                 }
                                                             }
                                                             Loader {
@@ -4248,11 +4241,11 @@ PluginPage {
                 text: "替换全部现有规则（现有规则会被清空）"
                 ButtonGroup.group: importModeGroup
             }
-            CheckBox {
+            PillButton {
                 id: importDisable
                 // 从别的机器拿来的规则可能带「关机 / 重启」这类行动：
                 // 默认让它导入后先停着，用户确认过再启用。
-                text: "导入后先设为停用（确认无误再手动启用）"
+                text: "导入后先停用"
             }
         }
     }
