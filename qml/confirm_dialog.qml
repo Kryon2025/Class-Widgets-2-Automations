@@ -129,55 +129,57 @@ QQW.Window {
                 opacity: 0.72
                 text: root.timeoutText()
             }
-        }
 
-        footer: RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
+            // 按钮放在内容区（和标题 / 正文共用 Dialog 的 padding），
+            // 不再放 footer —— footer 不吃 Dialog 的左右内边距，会导致按钮贴边。
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                spacing: 12
 
-            Repeater {
-                model: root.buttons
+                Repeater {
+                    model: root.buttons
 
-                delegate: Button {
-                    id: btn
-                    Layout.fillWidth: true
-                    text: modelData.text || qsTr("按钮")
+                    delegate: Button {
+                        id: btn
+                        Layout.fillWidth: true
+                        text: modelData.text || qsTr("按钮")
 
-                    readonly property string customBg: modelData.bg || ""
-                    readonly property string customFg: modelData.fg || ""
+                        readonly property string customBg: modelData.bg || ""
+                        readonly property string customFg: modelData.fg || ""
 
-                    // 官方 Button 的外观（圆角 / 边框 / 悬停 / 底部指示条）全部保留，
-                    // 只把「强调色」换成用户选的颜色：背景、边框、悬停色都跟着它走。
-                    highlighted: index === 0 || customBg.length > 0
-                    primaryColor: customBg.length > 0
-                        ? customBg
-                        : Theme.currentTheme.colors.primaryColor
+                        // 官方 Button 的外观全部保留，只把「强调色」换成用户选的颜色
+                        highlighted: index === 0 || customBg.length > 0
+                        primaryColor: customBg.length > 0
+                            ? customBg
+                            : Theme.currentTheme.colors.primaryColor
 
-                    // 官方 contentItem 是「图标 + 文字」的 Row；这里的按钮没有图标，
-                    // 复制同样的排版（Typography.Body + 居中），只把文字色参数化。
-                    contentItem: Item {
-                        clip: true
-                        anchors.fill: parent
-
-                        Text {
+                        // 官方 contentItem 是「图标 + 文字」的 Row；这里没有图标，复制同样的排版
+                        contentItem: Item {
+                            clip: true
                             anchors.fill: parent
-                            anchors.margins: 8
-                            typography: Typography.Body
-                            text: btn.text
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                            color: btn.customFg.length > 0
-                                ? btn.customFg
-                                : (btn.highlighted
-                                    ? Theme.currentTheme.colors.textOnAccentColor
-                                    : Theme.currentTheme.colors.textColor)
-                        }
-                    }
 
-                    onClicked: root.finish(index)
+                            Text {
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                typography: Typography.Body
+                                text: btn.text
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                                color: btn.customFg.length > 0
+                                    ? btn.customFg
+                                    : (btn.highlighted
+                                        ? Theme.currentTheme.colors.textOnAccentColor
+                                        : Theme.currentTheme.colors.textColor)
+                            }
+                        }
+
+                        onClicked: root.finish(index)
+                    }
                 }
             }
         }
+
     }
 }
