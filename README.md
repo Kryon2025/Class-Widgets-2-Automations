@@ -7,7 +7,7 @@
 
 <p>触发器 + 规则集 + 行动三段式配置，支持自动恢复、播放文字（全屏 / 顶部横幅）、规则导出 / 导入，以及托盘快捷面板入口。</p>
 
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-3.2.2-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-3.3.1-5A9BFF?style=for-the-badge)](https://github.com/Kryon2025/Class-Widgets-2-Automations/releases)
 [![开源许可](https://img.shields.io/github/license/Kryon2025/Class-Widgets-2-Automations?style=for-the-badge&label=%E5%BC%80%E6%BA%90%E8%AE%B8%E5%8F%AF%E8%AF%81)](https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/LICENSE)
 
 <p>
@@ -20,7 +20,7 @@
 </div>
 
 > [!NOTE]
-> 当前版本 **3.2.2**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
+> 当前版本 **3.3.1**，要求 Class Widgets 2 的插件 API `>=0.7.0`。
 > 在插件广场可以一键安装 / 更新，也可以在 Release 页下载 `.cwplugin` 手动导入。
 > 从旧版本升级时首次启动会自动迁移既有规则，不用重新配置；迁移后请停用或卸载旧插件，避免两套引擎重复触发。
 > 版本沿革与每版改动见 [CHANGELOG.md](CHANGELOG.md)。
