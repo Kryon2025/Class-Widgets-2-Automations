@@ -123,7 +123,7 @@ class Plugin(CW2Plugin):
         # 确认弹窗的 GUI 桥（同上，必须在 GUI 线程建立）
         try:
             import confirm_dialog
-            confirm_dialog.init()
+            confirm_dialog.init(getattr(self.api, "_app", None))
         except Exception as e:
             logger.warning("[automations] 确认弹窗模块初始化失败: {}", e)
 

@@ -2302,9 +2302,26 @@ PluginPage {
     Component {
         id: actConfirmComp
         ColumnLayout {
+            id: confirmRoot
             Layout.fillWidth: true
             spacing: 6
             property var it: null
+
+            // 行动列表里的「第 N 步」标签（和行动排头的序号一致）
+            function stepName(a) {
+                if (!a) return ""
+                var li = page.actTypes.indexOf(a.type || "")
+                return li >= 0 ? page.actLabels[li] : (a.type || "")
+            }
+            function jumpModel(defaultText) {
+                var r = page.cur()
+                var acts = (r && r.actions) || []
+                var m = [defaultText]
+                for (var i = 0; i < acts.length; i++)
+                    m.push("第 " + (i + 1) + " 步 · " + stepName(acts[i]))
+                return m
+            }
+
             function load(item) {
                 it = item
                 titleF.text = item.p1 || ""
@@ -2313,8 +2330,10 @@ PluginPage {
                 toSpin.value = parseInt(item.p4 || "30")
                 cancelF.text = item.p5 || "取消"
                 toOkCheck.checked = String(item.p6 || "").toLowerCase() === "on"
-                okJumpSpin.value = parseInt(item.p7 || "0")
-                cancelJumpSpin.value = parseInt(item.p8 || "0")
+                var j1 = parseInt(item.p7 || "0") || 0
+                okJumpCombo.currentIndex = Math.max(0, Math.min(okJumpCombo.count - 1, j1))
+                var j2 = parseInt(item.p8 || "0") || 0
+                cancelJumpCombo.currentIndex = Math.max(0, Math.min(cancelJumpCombo.count - 1, j2))
             }
             TextField {
                 id: titleF
@@ -2360,37 +2379,27 @@ PluginPage {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
-                Text { text: "确认后跳到第"; opacity: 0.75 }
-                SpinBox {
-                    id: okJumpSpin
-                    from: 0; to: 999
-                    Layout.preferredWidth: 96
-                    Layout.minimumWidth: 78
-                    ToolTip.visible: hovered
-                    ToolTip.text: "0 = 顺序执行下一步；填 N = 直接跳到第 N 步"
-                    onValueModified: if (it) it.p7 = String(value)
+                Text { text: "确认后"; opacity: 0.75 }
+                ComboBox {
+                    id: okJumpCombo
+                    Layout.fillWidth: true
+                    model: confirmRoot.jumpModel("不跳转（顺序下一步）")
+                    onActivated: if (it) it.p7 = String(index)
                 }
-                Text { text: "步（0 = 下一步）"; opacity: 0.6 }
-                Item { Layout.fillWidth: true }
             }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
-                Text { text: "取消后跳到第"; opacity: 0.75 }
-                SpinBox {
-                    id: cancelJumpSpin
-                    from: 0; to: 999
-                    Layout.preferredWidth: 96
-                    Layout.minimumWidth: 78
-                    ToolTip.visible: hovered
-                    ToolTip.text: "0 = 结束整条行动链；填 N = 跳到第 N 步继续"
-                    onValueModified: if (it) it.p8 = String(value)
+                Text { text: "取消后"; opacity: 0.75 }
+                ComboBox {
+                    id: cancelJumpCombo
+                    Layout.fillWidth: true
+                    model: confirmRoot.jumpModel("不跳转（结束整条链）")
+                    onActivated: if (it) it.p8 = String(index)
                 }
-                Text { text: "步（0 = 结束）"; opacity: 0.6 }
-                Item { Layout.fillWidth: true }
             }
             Text {
-                text: "确认 / 取消可各走一条分支：跳转填 0 时，确认 = 顺序下一步、取消 = 结束整条链。适合「眼操时间到了，要切息屏吗」这类需要等人拍板的场景。"
+                text: "跳转按行动列表排头的序号选（第一项 = 不跳转）；确认 / 取消可各走一条分支。适合「眼操时间到了，要切息屏吗」这类需要等人拍板的场景。"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 opacity: 0.62
@@ -3741,6 +3750,12 @@ PluginPage {
                                                 RowLayout {
                                                     Layout.fillWidth: true
                                                     spacing: 6
+                                                    Text {
+                                                        text: (trigRow.idx + 1) + "."
+                                                        Layout.preferredWidth: 16
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        opacity: 0.6
+                                                    }
                                                     ComboBox {
                                                         id: trigType
                                                         Layout.fillWidth: true
@@ -4003,6 +4018,12 @@ PluginPage {
                                                 RowLayout {
                                                     Layout.fillWidth: true
                                                     spacing: 6
+                                                    Text {
+                                                        text: (actRow.idx + 1) + "."
+                                                        Layout.preferredWidth: 16
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        opacity: 0.6
+                                                    }
                                                     ComboBox {
                                                         id: actType
                                                         Layout.fillWidth: true
