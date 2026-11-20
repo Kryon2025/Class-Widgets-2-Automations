@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>行动一览 · 更好的自动化</title>
+<title>行动一览 · Kryon的自动化</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header class="topbar">
-  <span class="site">更好的自动化</span>
+  <span class="site">Kryon的自动化</span>
   <nav>
     <a href="index.html">首页</a>
     <a href="install.html">安装</a>
     <a href="triggers.html">触发器</a>
     <a href="actions.html" class="active">行动</a>
-    <a href="lesson-ordinal.html">节次限定</a>
+    <a href="lesson-ordinal.html">第几节课限定</a>
     <a href="changelog.html">更新记录</a>
   </nav>
   <div class="ext"><a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">GitHub ↗</a></div>
@@ -36,7 +36,7 @@
   <main class="doc-main">
     <h1>行动一览</h1>
     <div class="meta-bar">
-      <span>内置 <b>17 种</b></span>
+      <span>内置 <b>22 种</b></span>
       <span>一条自动化可挂多个行动</span>
     </div>
     <p>行动是自动化被触发后依次执行的动作。同一条自动化可组合多个行动，用「等待」行动控制节奏。</p>
@@ -52,8 +52,8 @@
         <tr><td><strong>媒体控制</strong></td><td>播放 / 暂停等 SMTC 媒体控制；播放器未就绪时自动重试最多 10 秒</td></tr>
         <tr><td><strong>锁定配置项</strong></td><td>防止配置被改动</td></tr>
         <tr><td><strong>重启主程序</strong></td><td>重启 Class Widgets 2</td></tr>
-        <tr><td><strong>打开系统设置页</strong></td><td>跳转到 CW2 设置页</td></tr>
-        <tr><td><strong>切换深/浅色主题</strong></td><td>切换 CW2 主题</td></tr>
+        <tr><td><strong>打开系统设置页</strong></td><td>打开 Windows 设置页（<code>ms-settings:</code>）</td></tr>
+        <tr><td><strong>切换深/浅色主题</strong></td><td>切换 Windows 系统主题 / 应用主题（可恢复）</td></tr>
       </tbody>
     </table></div>
 
@@ -73,6 +73,7 @@
     <div class="table-wrap"><table>
       <thead><tr><th>行动</th><th>说明</th></tr></thead>
       <tbody>
+        <tr><td><strong>确认/取消弹窗</strong></td><td>行动链里插入等人拍板的弹窗：确认 / 取消可各设「跳到第几步」实现分支，支持超时秒数与「超时视为确认 / 取消」；弹窗置顶、不占任务栏</td></tr>
         <tr><td><strong>等待</strong></td><td>暂停指定 分 + 秒 后继续</td></tr>
         <tr><td><strong>广播信号</strong></td><td>向其它插件广播信号（配合「收到信号」触发器）</td></tr>
         <tr><td><strong>设标志</strong></td><td>设置一个可被条件判断的标志位</td></tr>

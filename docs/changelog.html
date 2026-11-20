@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>更新记录 · 更好的自动化</title>
+<title>更新记录 · Kryon的自动化</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header class="topbar">
-  <span class="site">更好的自动化</span>
+  <span class="site">Kryon的自动化</span>
   <nav>
     <a href="index.html">首页</a>
     <a href="install.html">安装</a>
     <a href="triggers.html">触发器</a>
     <a href="actions.html">行动</a>
-    <a href="lesson-ordinal.html">节次限定</a>
+    <a href="lesson-ordinal.html">第几节课限定</a>
     <a href="changelog.html" class="active">更新记录</a>
   </nav>
   <div class="ext"><a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">GitHub ↗</a></div>
@@ -36,10 +36,33 @@
   <main class="doc-main">
     <h1>更新记录</h1>
     <div class="meta-bar">
-      <span>当前版本 <b>v3.2.0</b></span>
+      <span>当前版本 <b>v3.3.1</b></span>
       <span>完整日志见仓库 <b>CHANGELOG.md</b></span>
     </div>
     <p>此处仅摘录主要版本节点，完整历史见仓库 <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
+
+    <h2 id="v331">v3.3.1</h2>
+    <ul>
+      <li>修复编辑自动化面板右侧出现大片空白、内容列不铺满的问题（<code>ScrollView.availableWidth</code> 取不到值，内容列退回隐式宽度）。</li>
+    </ul>
+
+    <h2 id="v330">v3.3.0</h2>
+    <ul>
+      <li><strong>「确认/取消弹窗」行动</strong>：行动链里插一个等人拍板的弹窗，确认 / 取消可各设「跳到第几步」实现分支跳转，两条路还能在后面合流；</li>
+      <li>可设超时秒数，超时按「确认」或「取消」由开关决定（默认按确认）；弹窗置顶、不占任务栏，显示在屏幕中上方。</li>
+    </ul>
+
+    <h2 id="v322">v3.2.2</h2>
+    <ul>
+      <li>合并主线：<strong>「上课时」「下课时」触发器可限定当天第几节课</strong>，与科目限定可同时使用；</li>
+      <li>新增在线文档站（<code>docs/</code>，随仓库发布）；LICENSE 恢复纯标准 MIT。</li>
+    </ul>
+
+    <h2 id="v321">v3.2.1</h2>
+    <ul>
+      <li>倒计时提醒改成标准灵动通知：标题不动，正文显示「还剩 N 秒」并每秒递减；</li>
+      <li>「快捷管理自动化」换成 RinUI 窗口，与主程序其它窗口同一套界面。</li>
+    </ul>
 
     <h2 id="v320">v3.2.0</h2>
     <ul>
@@ -48,8 +71,7 @@
       <li><strong>时间段触发器</strong>：精确到秒、可跨零点，离开可自动还原；</li>
       <li><strong>时间区间判定</strong>：「时间在…与…之间」条件；</li>
       <li><strong>快捷面板「快捷管理自动化」</strong>：托盘里勾选即改、立即保存；</li>
-      <li>修复媒体控制重启后失效、通知恢复显示互打断等问题；</li>
-      <li><span class="tag tag-new">本仓库</span> <strong>上课/下课触发器限定当天第几节课</strong>（PR #3）；LICENSE 恢复纯标准 MIT（PR #3）。</li>
+      <li>修复媒体控制重启后失效、通知恢复显示互打断等问题。</li>
     </ul>
 
     <h2 id="v310">v3.1.0</h2>
@@ -57,7 +79,7 @@
       <li><strong>合并回主线</strong>：3.0.x 曾以独立 ID 单独发版，自此统一回 <code>com.kryon.automations</code>，规则自动迁移；</li>
       <li><span class="tag tag-new">本仓库</span> 新增「播放文字」：全屏 / 顶部横幅两种模式，横幅高度按字号自适应；</li>
       <li><span class="tag tag-new">本仓库</span> 供其它插件调用的 <code>playBanner(text, duration)</code> 接口；上课/活动期间一律拒绝外部推送；</li>
-      <li><span class="tag tag-new">本仓库</span> 编辑面板「滚不到底」根修（面板挂窗口根节点、高度真量窗口）、参数换行适配。</li>
+      <li>播放窗口与文字编辑窗口不再出现在任务栏和 Alt+Tab 里；编辑窗控件改实色，修鼠标悬停黑白闪。</li>
     </ul>
 
     <h2 id="v30x">v3.0.x</h2>
@@ -83,6 +105,10 @@
 
   <aside class="doc-toc">
     <div class="toc-title">本页目录</div>
+    <a href="#v331">v3.3.1</a>
+    <a href="#v330">v3.3.0</a>
+    <a href="#v322">v3.2.2</a>
+    <a href="#v321">v3.2.1</a>
     <a href="#v320">v3.2.0</a>
     <a href="#v310">v3.1.0</a>
     <a href="#v30x">v3.0.x</a>

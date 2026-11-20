@@ -12,3 +12,6 @@ env/
 build/
 dist/
 *.egg-info/
+
+# 旧版本快照归档（仅本地保留，不入库）
+legacy/
