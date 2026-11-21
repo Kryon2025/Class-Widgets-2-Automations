@@ -58,33 +58,33 @@
     <div class="table-wrap"><table>
       <thead><tr><th>触发器</th><th>说明</th><th>参数</th></tr></thead>
       <tbody>
-        <tr><td><strong>定时</strong></td><td>每天指定时间触发；星期用七个复选框（全不选 = 不触发）；可勾选自动跳过非上课日</td><td>时:分:秒；星期</td></tr>
+        <tr><td><strong>定时</strong></td><td>每天指定时间触发；星期用七个按钮（全不选 = 不触发）；可勾选自动跳过非上课日</td><td>时:分:秒；星期</td></tr>
         <tr><td><strong>闹钟</strong></td><td>到点弹系统级通知并异步响铃（系统提示音 / 警告音 / 询问音 / 闹钟铃声 / 自定义 .wav），无需另配行动</td><td>时:分:秒；星期；铃音；自动跳过非上课日</td></tr>
         <tr><td><strong>间隔触发</strong></td><td>每隔固定秒数触发一次</td><td>间隔（1~86400 秒）</td></tr>
         <tr><td><strong>时间段内</strong></td><td>进入时间段触发一次（精确到秒、可跨零点、可选星期）；开启「恢复」时离开时间段自动还原</td><td>开始 / 结束时刻；星期；恢复；自动跳过非上课日</td></tr>
-        <tr><td><strong>长时间未触碰电脑</strong></td><td>键鼠无操作达到设定时长触发一次，一动即复位，不会重复触发</td><td>时长（分/秒）</td></tr>
+        <tr><td><strong>长时间未触碰电脑</strong></td><td>键鼠无操作达到设定时长触发一次，一动即复位，不会重复触发</td><td>时长（分 + 秒）</td></tr>
       </tbody>
     </table></div>
 
     <h2 id="system">系统类</h2>
     <div class="table-wrap"><table>
-      <thead><tr><th>触发器</th><th>说明</th></tr></thead>
+      <thead><tr><th>触发器</th><th>说明</th><th>参数</th></tr></thead>
       <tbody>
-        <tr><td><strong>应用启动时</strong></td><td>指定应用被打开时触发</td></tr>
-        <tr><td><strong>开机后</strong></td><td>系统开机后触发</td></tr>
-        <tr><td><strong>时间状态变化时</strong></td><td>上课 / 课间 / 放学等状态切换时触发</td></tr>
-        <tr><td><strong>系统设置变化时</strong></td><td>系统主题 / 应用主题 / 电源（接电与电池）/ 电池电量 / 网络状态变化时触发</td></tr>
-        <tr><td><strong>收到信号</strong></td><td>其它插件广播信号时触发（配合「广播信号」行动使用）</td></tr>
+        <tr><td><strong>应用启动时</strong></td><td>Class Widgets 启动时触发一次（插件加载完成后约 1 秒）；监听的是主程序自身启动，不是某个应用的打开</td><td>—</td></tr>
+        <tr><td><strong>开机后</strong></td><td>系统开机后的窗口内首次运行主程序时触发一次（每次开机只触发一次）</td><td>开机多少秒内算「刚开机」（默认 120 秒）</td></tr>
+        <tr><td><strong>时间状态变化时</strong></td><td>上课 / 课间 / 放学等状态切换时触发</td><td>—</td></tr>
+        <tr><td><strong>系统设置变化时</strong></td><td>系统主题 / 应用主题 / 电源（接电与电池）/ 电池电量 / 网络状态变化时触发</td><td>设置项；可选「变为」的目标值</td></tr>
+        <tr><td><strong>收到信号</strong></td><td>其它插件广播信号时触发（配合「广播信号」行动使用）</td><td>信号名</td></tr>
       </tbody>
     </table></div>
 
     <h2 id="ext">扩展触发器（需联动插件）</h2>
     <div class="table-wrap"><table>
-      <thead><tr><th>触发器</th><th>联动插件</th></tr></thead>
+      <thead><tr><th>触发器</th><th>联动插件</th><th>参数</th></tr></thead>
       <tbody>
-        <tr><td>收到系统通知时</td><td>系统通知扩展</td></tr>
-        <tr><td>随机点名开始</td><td rowspan="2">随机点名 <code>com.rollcall</code></td></tr>
-        <tr><td>随机点名出结果后</td></tr>
+        <tr><td>收到系统通知时</td><td>系统通知扩展</td><td>应用名包含 / 内容包含（均可空）</td></tr>
+        <tr><td>随机点名开始</td><td rowspan="2">随机点名 <code>com.rollcall</code></td><td>—</td></tr>
+        <tr><td>随机点名出结果后</td><td>—</td></tr>
       </tbody>
     </table></div>
 
