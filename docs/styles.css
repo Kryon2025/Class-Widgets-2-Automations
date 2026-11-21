@@ -143,6 +143,9 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--brand); font-weight: 600; font-size: 13px; }
 tr:last-child td { border-bottom: none; }
+/* 跨行合并的单元格：内容垂直居中于所跨各行中部，且不画表尾多余的分隔线 */
+td[rowspan] { vertical-align: middle; }
+tbody tr:nth-last-child(2) td[rowspan] { border-bottom: none; }
 
 .tag {
   display: inline-block; padding: 2px 10px; border-radius: 999px;
