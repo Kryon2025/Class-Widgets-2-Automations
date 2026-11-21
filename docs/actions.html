@@ -36,10 +36,11 @@
   <main class="doc-main">
     <h1>行动一览</h1>
     <div class="meta-bar">
-      <span>内置 <b>22 种</b></span>
+      <span>内置 <b>18 种</b></span>
+      <span>扩展可选 <b>4 种</b></span>
       <span>一条自动化可挂多个行动</span>
     </div>
-    <p>行动是自动化被触发后依次执行的动作。同一条自动化可组合多个行动，用「等待」行动控制节奏。</p>
+    <p>行动是自动化被触发后依次执行的动作。同一条自动化可组合多个行动，用「等待」行动控制节奏。这里「扩展」指设置页「扩展功能」开关控制的 4 种（发系统通知、触发随机点名、设置随机点名、关闭点名窗口）；「课程展示模式」算内置，但需「全量展示课程」插件在场，插件缺失时只记一条警告。</p>
 
     <h2 id="system">系统与设备</h2>
     <div class="table-wrap"><table>
@@ -47,13 +48,13 @@
       <tbody>
         <tr><td><strong>运行命令/程序</strong></td><td>执行命令行或启动程序</td></tr>
         <tr><td><strong>应用管理</strong></td><td>打开 / 关闭应用，支持从应用列表选择（含开始菜单 .lnk、UWP）</td></tr>
-        <tr><td><strong>电源</strong></td><td>关机 / 重启等电源操作</td></tr>
-        <tr><td><strong>音量</strong></td><td>调整系统音量</td></tr>
+        <tr><td><strong>电源</strong></td><td>关机 / 重启 / 注销 / 睡眠 / 休眠（系统未开启休眠时该项置灰）</td></tr>
+        <tr><td><strong>音量</strong></td><td>增大 / 减小 / 静音（切换）/ 设为指定值 %</td></tr>
         <tr><td><strong>媒体控制</strong></td><td>播放 / 暂停等 SMTC 媒体控制；播放器未就绪时自动重试最多 10 秒</td></tr>
         <tr><td><strong>锁定配置项</strong></td><td>防止配置被改动</td></tr>
         <tr><td><strong>重启主程序</strong></td><td>重启 Class Widgets 2</td></tr>
-        <tr><td><strong>打开系统设置页</strong></td><td>打开 Windows 设置页（<code>ms-settings:</code>）</td></tr>
-        <tr><td><strong>切换深/浅色主题</strong></td><td>切换 Windows 系统主题 / 应用主题（可恢复）</td></tr>
+        <tr><td><strong>打开系统设置页</strong></td><td>打开 Windows 系统设置页（<code>ms-settings:</code>）：主题 / 电源和睡眠 / 电池 / 网络 / WLAN 等常用页</td></tr>
+        <tr><td><strong>切换深/浅色主题</strong></td><td>目标（浅色 / 深色 / 切换）× 范围（全部（应用 + 系统）/ 仅应用 / 仅系统）；可恢复</td></tr>
       </tbody>
     </table></div>
 
@@ -73,7 +74,7 @@
     <div class="table-wrap"><table>
       <thead><tr><th>行动</th><th>说明</th></tr></thead>
       <tbody>
-        <tr><td><strong>确认/取消弹窗</strong></td><td>行动链里插入等人拍板的弹窗：确认 / 取消可各设「跳到第几步」实现分支，支持超时秒数与「超时视为确认 / 取消」；弹窗置顶、不占任务栏</td></tr>
+        <tr><td><strong>确认/取消弹窗</strong></td><td>行动链里插入等人拍板的弹窗（主程序同款 RinUI 样式）：最多 6 个按钮，每个按钮可设跳转目标与背景 / 文字色（支持透明度，留空跟随主题），按行动列表排头序号选；可设超时秒数与超时按哪个按钮，另有「N 秒后自动按「…」」倒计时；弹窗置顶、不占任务栏</td></tr>
         <tr><td><strong>等待</strong></td><td>暂停指定 分 + 秒 后继续</td></tr>
         <tr><td><strong>广播信号</strong></td><td>向其它插件广播信号（配合「收到信号」触发器）</td></tr>
         <tr><td><strong>设标志</strong></td><td>设置一个可被条件判断的标志位</td></tr>
@@ -83,7 +84,7 @@
     </table></div>
 
     <h2 id="misc">其他</h2>
-    <p>行动之外，每条自动化还支持「条件」判定（如当前科目、时间区间、前台窗口、标志位等 17 种），只有条件全部满足时行动才会执行；也支持「跑完自动停用」「恢复」等开关。</p>
+    <p>行动之外，每条自动化还支持「条件」判定（如当前科目、时间区间、前台窗口、标志位等，共 19 种：17 内置 + 2 扩展），只有条件全部满足时行动才会执行；也支持「跑完自动停用」「恢复」等开关。</p>
 
     <footer class="page-footer">
       <p>本站由 AI 生成 · <a href="https://github.com/Kryon2025/Class-Widgets-2-Automations" target="_blank" rel="noopener">Kryon2025/Class-Widgets-2-Automations</a></p>
